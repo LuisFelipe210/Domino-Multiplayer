@@ -9,7 +9,7 @@ Para executar este projeto na sua máquina, precisa de ter o **Git** e o **Docke
 
 **1. Clonar o Repositório**
 ```bash
-git clone <URL_DO_SEU_REPOSITORIO_AQUI>
+git clone git@github.com:LuisFelipe210/projeto-domino.git
 cd projeto-domino
 ```
 
