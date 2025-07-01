@@ -1,7 +1,6 @@
 version: '3.8'
 
 services:
-  # --- BANCOS DE DADOS (sem alteração) ---
   postgres:
     image: postgres:13
     container_name: domino-postgres
@@ -11,18 +10,13 @@ services:
       POSTGRES_DB: ${POSTGRES_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
     restart: unless-stopped
 
   redis:
     image: redis:6.2-alpine
     container_name: domino-redis
     restart: unless-stopped
-    ports:
-      - "6379:6379"
 
-  # --- BACKEND (2 INSTÂNCIAS - sem alteração) ---
   backend1:
     build:
       context: ./backend
@@ -53,24 +47,15 @@ services:
       - redis
     restart: unless-stopped
   
-  # --- NOVO SERVIÇO DE FRONTEND ---
-  frontend:
-    build:
-      context: ./frontend
-    container_name: domino-frontend
-    ports:
-      - "3000:80" # Expomos o frontend na porta 3000 para não colidir com o NGINX principal
-
-  # --- NGINX PRINCIPAL (PROXY REVERSO) ---
   nginx:
     image: nginx:stable-alpine
     container_name: domino-nginx
     ports:
       - "80:80"
     volumes:
-      - ./nginx/nginx.conf:/etc/nginx/nginx.conf # Usamos a nossa configuração personalizada
+      - ./frontend:/usr/share/nginx/html # Mapeia a pasta frontend para o NGINX
+      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:
-      - frontend
       - backend1
       - backend2
     restart: unless-stopped
