@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  # --- BANCOS DE DADOS (sem alteração) ---
+  postgres:
+    image: postgres:13
+    container_name: domino-postgres
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    restart: unless-stopped
+
+  redis:
+    image: redis:6.2-alpine
+    container_name: domino-redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+
+  # --- BACKEND (2 INSTÂNCIAS - sem alteração) ---
+  backend1:
+    build:
+      context: ./backend
+    container_name: backend-server-1
+    environment:
+      - PORT=4001
+      - SERVER_ID=server-1
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  backend2:
+    build:
+      context: ./backend
+    container_name: backend-server-2
+    environment:
+      - PORT=4002
+      - SERVER_ID=server-2
+      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=${JWT_SECRET}
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+  
+  # --- NOVO SERVIÇO DE FRONTEND ---
+  frontend:
+    build:
+      context: ./frontend
+    container_name: domino-frontend
+    ports:
+      - "3000:80" # Expomos o frontend na porta 3000 para não colidir com o NGINX principal
+
+  # --- NGINX PRINCIPAL (PROXY REVERSO) ---
+  nginx:
+    image: nginx:stable-alpine
+    container_name: domino-nginx
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf # Usamos a nossa configuração personalizada
+    depends_on:
+      - frontend
+      - backend1
+      - backend2
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
