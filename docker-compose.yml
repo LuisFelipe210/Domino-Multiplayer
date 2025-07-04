@@ -21,12 +21,23 @@ services:
     build:
       context: ./backend
     container_name: backend-server-1
+    # A ESTRUTURA CORRETA É UMA LISTA (com hífens)
     environment:
       - PORT=4001
       - SERVER_ID=server-1
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      - ./backend:/usr/src/app
+      - /usr/src/app/node_modules
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend
+          target: /usr/src/app
+          ignore:
+            - node_modules/
     depends_on:
       - postgres
       - redis
@@ -36,12 +47,23 @@ services:
     build:
       context: ./backend
     container_name: backend-server-2
+    # A ESTRUTURA CORRETA É UMA LISTA (com hífens)
     environment:
       - PORT=4002
       - SERVER_ID=server-2
       - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
+    volumes:
+      - ./backend:/usr/src/app
+      - /usr/src/app/node_modules
+    develop:
+      watch:
+        - action: rebuild
+          path: ./backend
+          target: /usr/src/app
+          ignore:
+            - node_modules/
     depends_on:
       - postgres
       - redis
@@ -53,7 +75,7 @@ services:
     ports:
       - "80:80"
     volumes:
-      - ./frontend:/usr/share/nginx/html # Mapeia a pasta frontend para o NGINX
+      - ./frontend:/usr/share/nginx/html
       - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
     depends_on:
       - backend1
