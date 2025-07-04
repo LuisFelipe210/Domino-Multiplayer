@@ -3,7 +3,6 @@ import { Player, GameState } from '../../types';
 import { redisClient } from '../../config/redis';
 import { pool } from '../../config/database';
 
-// Mock das dependências externas
 jest.mock('../../config/redis', () => ({
   redisClient: {
     get: jest.fn(),
@@ -69,7 +68,7 @@ describe('Game Logic: handlePlayPiece', () => {
   it('should return an error if the player does not have the piece', () => {
     let gameState = createBaseGameState();
     gameState.hands['player-1'] = [{ value1: 1, value2: 1 }];
-    const moveData = { piece: { value1: 2, value2: 2 } };
+    const moveData = { type: "PLAY_PIECE" as const, piece: { value1: 2, value2: 2 } };
     const result = handlePlayPiece(gameState, 'player-1', moveData);
     expect(result.error).toBe('Você não possui esta peça.');
   });
@@ -79,7 +78,7 @@ describe('Game Logic: handlePlayPiece', () => {
     gameState.board = [{ piece: { value1: 5, value2: 4 }, x: 0, y: 0, rotation: 0 }];
     gameState.activeEnds = [{ id: '-1,0', value: 5, x: -1, y: 0, attachDirection: 180 }, { id: '1,0', value: 4, x: 1, y: 0, attachDirection: 0 }];
     gameState.hands['player-1'] = [{ value1: 1, value2: 2 }]; // Peça inválida
-    const result = handlePlayPiece(gameState, 'player-1', { piece: { value1: 1, value2: 2 } });
+    const result = handlePlayPiece(gameState, 'player-1', { type: "PLAY_PIECE" as const, piece: { value1: 1, value2: 2 } });
     expect(result.error).toBe('Jogada inválida.');
   });
   
@@ -88,7 +87,7 @@ describe('Game Logic: handlePlayPiece', () => {
     gameState.board = [{ piece: { value1: 5, value2: 4 }, x: 0, y: 0, rotation: 0 }];
     gameState.activeEnds = [{ id: '-1,0', value: 5, x: -1, y: 0, attachDirection: 180 }, { id: '1,0', value: 4, x: 1, y: 0, attachDirection: 0 }];
     gameState.hands['player-1'] = [{ value1: 5, value2: 4 }];
-    const result = handlePlayPiece(gameState, 'player-1', { piece: { value1: 5, value2: 4 } });
+    const result = handlePlayPiece(gameState, 'player-1', { type: "PLAY_PIECE" as const, piece: { value1: 5, value2: 4 } });
     
     expect(result.events?.[0].payload.type).toBe('CHOOSE_PLACEMENT');
     expect(result.events?.[0].payload.options).toHaveLength(2);
@@ -97,7 +96,7 @@ describe('Game Logic: handlePlayPiece', () => {
   it('should end the game if a player plays their last piece', () => {
     let gameState = createBaseGameState();
     gameState.hands['player-1'] = [{ value1: 6, value2: 6 }];
-    const result = handlePlayPiece(gameState, 'player-1', { piece: { value1: 6, value2: 6 } });
+    const result = handlePlayPiece(gameState, 'player-1', { type: "PLAY_PIECE" as const, piece: { value1: 6, value2: 6 } });
     expect(result.terminal).toBeDefined();
     expect(result.terminal?.winner?.id).toBe('player-1');
   });
@@ -121,10 +120,12 @@ describe('Game Logic: handlePassTurn', () => {
 });
 
 describe('Game Logic: handleLeaveGame', () => {
+    const mockWs = {} as any;
+
     it('should pass the turn to the next player if the current player leaves', () => {
         let gameState = createBaseGameState();
         gameState.turn = 'player-2';
-        const result = handleLeaveGame(gameState, 'player-2', false);
+        const result = handleLeaveGame(mockWs, gameState, 'player-2', false);
         expect(result.newState?.turn).toBe('player-3');
         expect(result.terminal).toBeUndefined();
     });
@@ -133,7 +134,7 @@ describe('Game Logic: handleLeaveGame', () => {
         let gameState = createBaseGameState();
         gameState.players[2].disconnectedSince = Date.now();
         gameState.players[3].disconnectedSince = Date.now();
-        const result = handleLeaveGame(gameState, 'player-1', false);
+        const result = handleLeaveGame(mockWs, gameState, 'player-1', false);
         expect(result.terminal).toBeDefined();
         expect(result.terminal?.winner?.id).toBe('player-2');
     });
@@ -143,7 +144,7 @@ describe('Game Logic: handleLeaveGame', () => {
         gameState.players[0].disconnectedSince = Date.now();
         gameState.players[2].disconnectedSince = Date.now();
         gameState.players[3].disconnectedSince = Date.now();
-        const result = handleLeaveGame(gameState, 'player-2', false); 
+        const result = handleLeaveGame(mockWs, gameState, 'player-2', false); 
         expect(result.terminal).toBeDefined();
         expect(result.terminal?.winner).toBeNull();
     });

@@ -1,19 +1,12 @@
-import { Router, Request, Response, NextFunction } from 'express';
-import { body, validationResult } from 'express-validator';
+import { Router } from 'express';
+import { body } from 'express-validator';
 import { listRooms, joinRoom, rejoinGame } from '../controllers/lobby.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
+import { handleValidationErrors } from '../middleware/validation.middleware';
 
 const router = Router();
 
-// Middleware para lidar com os resultados da validação (pode ser reutilizado ou movido para um ficheiro separado)
-const handleValidationErrors = (req: Request, res: Response, next: NextFunction) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-    }
-    next();
-};
-
+// O middleware de autenticação é aplicado a todas as rotas deste ficheiro
 router.use(authMiddleware);
 
 // Rota para obter a lista de salas
@@ -26,7 +19,7 @@ router.post(
         .notEmpty().withMessage('O nome da sala é obrigatório.')
         .trim()
         .escape(),
-    handleValidationErrors,
+    handleValidationErrors, // Usando o middleware centralizado
     joinRoom
 );
 

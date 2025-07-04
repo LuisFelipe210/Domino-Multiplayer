@@ -1,18 +1,10 @@
 import { Router } from 'express';
-import { body, validationResult } from 'express-validator';
+import { body } from 'express-validator';
 import { register, login, logout } from '../controllers/auth.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
-import { Request, Response, NextFunction } from 'express';
+import { handleValidationErrors } from '../middleware/validation.middleware';
 
 const router = Router();
-
-const handleValidationErrors = (req: Request, res: Response, next: NextFunction) => {
-    const errors = validationResult(req);
-    if (!errors.isEmpty()) {
-        return res.status(400).json({ errors: errors.array() });
-    }
-    next();
-};
 
 router.post(
     '/register',

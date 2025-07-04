@@ -1,5 +1,5 @@
 import { RawData } from 'ws';
-import { AuthenticatedWebSocket, GameLogicResult } from '../types';
+import { AuthenticatedWebSocket, GameLogicResult, GameMessage } from '../types'; // <--- TIPO 'GameMessage' ADICIONADO
 import { 
     getGameState, 
     saveGameState,
@@ -8,46 +8,49 @@ import {
     handlePassTurn, 
     handleLeaveGame 
 } from './gameHandler';
-import { sendError, sendToPlayer, broadcastToRoom } from './gameUtils';
+import { sendError, broadcastToRoom } from './gameUtils'; // 'sendToPlayer' removido pois é usado via pub/sub
+import { redisClient } from '../config/redis';
 
 /**
  * Ponto de entrada para mensagens WebSocket.
  * Analisa a mensagem, chama a lógica de jogo apropriada e processa o resultado.
  */
 export const handleGameMessage = async (ws: AuthenticatedWebSocket, message: RawData, roomId: string) => {
-    let data;
+    let data: GameMessage; // <--- AGORA USA O TIPO DE UNIÃO
     try {
         data = JSON.parse(message.toString());
     } catch (e) {
-        return; // Ignora mensagem inválida
+        return sendError(ws, "Formato de mensagem inválido."); // Ignora mensagem inválida
     }
 
+    const userId = String(ws.user.userId);
     let gameState = await getGameState(roomId);
     if (!gameState) {
         return sendError(ws, "O jogo não foi encontrado ou já terminou.");
     }
 
-    const userId = String(ws.user.userId);
     const player = gameState.players.find(p => p.id === userId);
 
     // Validações genéricas
     if (player?.disconnectedSince) {
         return sendError(ws, "Você está desconectado. Recarregue para reconectar.");
     }
-    if (data.type !== 'LEAVE_GAME' && gameState.turn !== userId && ['PLAY_PIECE', 'PASS_TURN'].includes(data.type)) {
+    // A validação de turno para 'LEAVE_GAME' é removida, pois um jogador pode sair a qualquer momento.
+    if (gameState.turn !== userId && ['PLAY_PIECE', 'PASS_TURN'].includes(data.type)) {
         return sendError(ws, 'Não é a sua vez.');
     }
 
     let result: GameLogicResult = {};
     switch (data.type) {
         case 'PLAY_PIECE':
+            // 'data' aqui é automaticamente inferido como 'PlayPieceMessage' pelo TypeScript!
             result = handlePlayPiece(gameState, userId, data);
             break;
         case 'PASS_TURN':
             result = handlePassTurn(gameState, userId);
             break;
         case 'LEAVE_GAME':
-            result = handleLeaveGame(gameState, userId, false);
+            result = handleLeaveGame(ws, gameState, userId, false);
             break;
         default:
             return sendError(ws, "Tipo de mensagem desconhecido.");
@@ -60,8 +63,13 @@ export const handleGameMessage = async (ws: AuthenticatedWebSocket, message: Raw
 
     if (result.events) {
         result.events.forEach((event: any) => {
-            if (event.target === 'player') sendToPlayer(userId, event.payload);
-            if (event.target === 'broadcast') broadcastToRoom(roomId, event.payload);
+            // Usando o sistema de Pub/Sub para todos os eventos
+            if (event.target === 'player') {
+                redisClient.publish('game-events', JSON.stringify({ targetUserId: userId, payload: event.payload }));
+            }
+            if (event.target === 'broadcast') {
+                broadcastToRoom(roomId, event.payload);
+            }
         });
     }
 

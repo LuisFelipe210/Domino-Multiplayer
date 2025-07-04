@@ -1,9 +1,10 @@
 import { redisClient } from '../config/redis';
 import { pool } from '../config/database';
-import { GameState, Domino, Player, PlacedDomino, BoardEnd, GameLogicResult, GameEvent } from '../types';
+import { GameState, Domino, Player, PlacedDomino, BoardEnd, GameLogicResult, GameEvent, AuthenticatedWebSocket } from '../types';
 import { PLAYERS_TO_START_GAME, INITIAL_HAND_SIZE } from '../config/gameConfig';
 import { sendToPlayer } from './gameUtils';
 import { SERVER_ID } from '../config/environment';
+import { PlayPieceMessage } from '../types';
 
 // --- Funções de Acesso ao Estado ---
 export const getGameState = async (roomId: string): Promise<GameState | null> => {
@@ -52,7 +53,7 @@ export const getNextTurn = (currentPlayerId: string, players: Player[]): string 
     return activePlayers[(currentIndex + 1) % activePlayers.length].id;
 };
 
-const getPublicState = (gameState: GameState) => {
+export const getPublicState = (gameState: GameState) => {
     const playerPieceCounts = Object.fromEntries(
         gameState.players.map(p => [p.id, gameState.hands[p.id]?.length || 0])
     );
@@ -76,8 +77,7 @@ function getSecondCell(x: number, y: number, rotation: 0 | 90 | 180 | 270): { x2
     return { x2: x, y2: y };
 }
 
-
-export function handlePlayPiece(gameState: GameState, userId: string, data: any): GameLogicResult {
+export function handlePlayPiece(gameState: GameState, userId: string, data: PlayPieceMessage): GameLogicResult {
     const hand = gameState.hands[userId];
     if (!hand) return { error: 'Mão do jogador não encontrada.' };
     
@@ -230,10 +230,17 @@ export async function endGame(roomId: string, gameState: GameState, winner: Play
         if(winner && winner.id.match(/^\d+$/)) {
             await pool.query(
                 'INSERT INTO match_history (room_id, winner_id, winner_username, players) VALUES ($1, $2, $3, $4)',
-                [parseInt(winner.id, 10), winner.username, JSON.stringify(gameState.players.map(p => ({id: p.id, username: p.username})))]
+                [
+                    roomId,
+                    parseInt(winner.id, 10), 
+                    winner.username, 
+                    JSON.stringify(gameState.players.map(p => ({id: p.id, username: p.username})))
+                ]
             );
         }
-    } catch (e) { console.error("Error saving match history:", e); }
+    } catch (e) { 
+        console.error("Error saving match history:", e); 
+    }
 
     const playerIds = gameState.players.map(p => `user:active_game:${p.id}`);
     if (playerIds.length > 0) await redisClient.del(playerIds);
@@ -273,7 +280,7 @@ export function handlePassTurn(gameState: GameState, userId: string, forceEndChe
     return { newState: gameState, events };
 }
 
-export function handleLeaveGame(gameState: GameState, userId: string, forceRemove = false): GameLogicResult {
+export function handleLeaveGame(ws: AuthenticatedWebSocket, gameState: GameState, userId: string, forceRemove = false): GameLogicResult {
     const leavingPlayer = gameState.players.find(p => p.id === userId);
     if (!leavingPlayer) return { newState: gameState };
 

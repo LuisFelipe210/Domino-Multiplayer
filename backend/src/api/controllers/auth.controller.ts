@@ -20,7 +20,6 @@ export const register = async (req: Request, res: Response) => {
         res.status(201).json(newUser.rows[0]);
     } catch (error: any) {
         console.error("Erro no registo:", error);
-        // Verifica se o erro é de violação de chave única (utilizador duplicado)
         if (error.code === '23505') {
              return res.status(409).json({ message: 'Este nome de utilizador já existe.' });
         }
@@ -35,7 +34,7 @@ export const login = async (req: Request, res: Response) => {
     }
 
     try {
-        const userResult = await pool.query('SELECT * FROM users WHERE username = $1', [username]);
+        const userResult = await pool.query('SELECT id, username, password_hash FROM users WHERE username = $1', [username]);
         if (userResult.rows.length === 0) {
             return res.status(401).json({ message: 'Credenciais inválidas.' });
         }
@@ -47,16 +46,29 @@ export const login = async (req: Request, res: Response) => {
         }
 
         const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1h' });
-        res.json({ token });
+        
+        res.cookie('token', token, {
+            httpOnly: true,
+            secure: process.env.NODE_ENV === 'production',
+            sameSite: 'strict', 
+            maxAge: 3600000
+        });
+
+        res.status(200).json({ 
+            success: true, 
+            user: {
+                id: user.id,
+                username: user.username
+            }
+        });
+
     } catch (error) {
         console.error("Erro no login:", error);
         res.status(500).json({ message: 'Erro interno no servidor.' });
     }
 };
 
-// Função de logout adicionada
 export const logout = async (req: Request, res: Response) => {
-    // Para JWT stateless, o logout é tratado no lado do cliente (apagando o token).
-    // Este endpoint existe por boas práticas e pode ser estendido para blacklisting de tokens.
+    res.clearCookie('token');
     res.status(200).json({ message: 'Logout bem-sucedido.' });
 };

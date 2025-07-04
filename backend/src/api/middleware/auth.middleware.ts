@@ -1,25 +1,25 @@
 import { Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
-import { JWT_SECRET } from '../../config/environment'
+import { JWT_SECRET } from '../../config/environment';
+import { DecodedToken } from '../../types';
 
 declare global {
   namespace Express {
     interface Request {
-      user?: any;
+      user?: DecodedToken;
     }
   }
 }
 
 export const authMiddleware = (req: Request, res: Response, next: NextFunction) => {
-    const authHeader = req.headers.authorization;
-    if (!authHeader || !authHeader.startsWith('Bearer ')) {
-        return res.status(401).json({ message: 'Token de autenticação não fornecido ou mal formatado.' });
-    }
+    const token = req.cookies.token;
 
-    const token = authHeader.split(' ')[1];
+    if (!token) {
+        return res.status(401).json({ message: 'Token de autenticação não fornecido.' });
+    }
     
     try {
-        const decoded = jwt.verify(token, JWT_SECRET);
+        const decoded = jwt.verify(token, JWT_SECRET) as DecodedToken;
         req.user = decoded;
         next();
     } catch (error) {

@@ -63,3 +63,33 @@ export interface GameLogicResult {
   error?: string;
   terminal?: { winner: Player | null, reason: string };
 }
+
+export interface DecodedToken {
+  userId: string;
+  username: string;
+  iat: number;
+  exp: number;
+}
+
+// --- Tipos para Mensagens do WebSocket ---
+
+interface BaseMessage {
+  type: string;
+}
+
+export interface PlayPieceMessage extends BaseMessage {
+  type: 'PLAY_PIECE';
+  piece: Domino;
+  endId?: string;
+}
+
+export interface PassTurnMessage extends BaseMessage {
+  type: 'PASS_TURN';
+}
+
+export interface LeaveGameMessage extends BaseMessage {
+  type: 'LEAVE_GAME';
+}
+
+// Um tipo de união que representa qualquer mensagem de jogo válida que o servidor pode receber.
+export type GameMessage = PlayPieceMessage | PassTurnMessage | LeaveGameMessage;

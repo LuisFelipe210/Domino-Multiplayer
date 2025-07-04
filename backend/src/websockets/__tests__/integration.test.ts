@@ -81,7 +81,10 @@ describe('Integração: Partida completa simulada 4 jogadores', () => {
     await saveGameState('room-4players', gameState);
 
     // player 1 joga a peça que vence o jogo
-    const playResult = handlePlayPiece(gameState, '1', { piece: { value1: 6, value2: 6 } });
+    const playResult = handlePlayPiece(gameState, '1', {
+      piece: { value1: 6, value2: 6 },
+      type: 'PLAY_PIECE'
+    });
 
     expect(playResult.terminal).toBeDefined();
     expect(playResult.terminal?.winner?.id).toBe('1');

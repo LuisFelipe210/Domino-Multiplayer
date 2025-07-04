@@ -1,5 +1,6 @@
 import express from 'express';
 import http from 'http';
+import cookieParser from 'cookie-parser';
 import authRoutes from './api/routes/auth.routes';
 import lobbyRoutes from './api/routes/lobby.routes';
 import { initWebSocketServer } from './websockets/websocketServer';
@@ -8,6 +9,7 @@ const app = express();
 
 // Middlewares
 app.use(express.json());
+app.use(cookieParser());
 
 // Rotas da API
 app.use('/api/auth', authRoutes);
