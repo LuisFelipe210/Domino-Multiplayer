@@ -1,10 +1,8 @@
-// backend/src/server.ts
 import server from './app';
 import { redisClient, subscriber } from './config/redis';
 import { pool } from './config/database';
-
-const PORT = process.env.PORT || 4000;
-const SERVER_ID = process.env.SERVER_ID || 'default-server';
+// Importa as variáveis de ambiente já validadas
+import { PORT, SERVER_ID } from './config/environment';
 
 const startServer = async () => {
     const connectWithRetry = async (serviceName: string, connectFn: () => Promise<any>) => {

@@ -1,10 +1,8 @@
-// backend/src/api/controllers/auth.controller.ts
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
-import { pool } from '../../config/database'; // Import nomeado
-
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret';
+import { pool } from '../../config/database';
+import { JWT_SECRET } from '../../config/environment'
 
 export const register = async (req: Request, res: Response) => {
     const { username, password } = req.body;
@@ -20,8 +18,13 @@ export const register = async (req: Request, res: Response) => {
             [username, passwordHash]
         );
         res.status(201).json(newUser.rows[0]);
-    } catch (error) {
-        res.status(500).json({ message: 'Erro ao registar utilizador. O utilizador já pode existir.' });
+    } catch (error: any) {
+        console.error("Erro no registo:", error);
+        // Verifica se o erro é de violação de chave única (utilizador duplicado)
+        if (error.code === '23505') {
+             return res.status(409).json({ message: 'Este nome de utilizador já existe.' });
+        }
+        res.status(500).json({ message: 'Erro interno ao registar utilizador.' });
     }
 };
 
@@ -46,6 +49,14 @@ export const login = async (req: Request, res: Response) => {
         const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1h' });
         res.json({ token });
     } catch (error) {
+        console.error("Erro no login:", error);
         res.status(500).json({ message: 'Erro interno no servidor.' });
     }
+};
+
+// Função de logout adicionada
+export const logout = async (req: Request, res: Response) => {
+    // Para JWT stateless, o logout é tratado no lado do cliente (apagando o token).
+    // Este endpoint existe por boas práticas e pode ser estendido para blacklisting de tokens.
+    res.status(200).json({ message: 'Logout bem-sucedido.' });
 };
