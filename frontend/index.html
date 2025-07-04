@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="pt">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Jogo de Dominó</title>
+    <style>
+        :root {
+            --domino-width: 40px;
+            --domino-height: 20px;
+        }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            padding-top: 20px;
+            min-height: 100vh;
+            margin: 0;
+            color: #333;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+            width: 95%;
+            max-width: 1200px;
+            transition: all 0.3s ease;
+        }
+        .view { display: none; }
+        .view.active { display: block; }
+        h1, h2 {
+            text-align: center;
+            color: #1c1e21;
+        }
+        .form-container, .lobby-container {
+            max-width: 400px;
+            margin: 0 auto;
+        }
+        input {
+            width: calc(100% - 22px);
+            padding: 12px;
+            margin-bottom: 12px;
+            border: 1px solid #dddfe2;
+            border-radius: 6px;
+            font-size: 16px;
+        }
+        button {
+            width: 100%;
+            padding: 12px;
+            border: none;
+            border-radius: 6px;
+            background-color: #007bff;
+            color: white;
+            font-size: 16px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-top: 8px;
+            transition: background-color 0.2s;
+        }
+        button:hover { background-color: #0069d9; }
+        button:disabled { background-color: #ccc; cursor: not-allowed; }
+        button.secondary { background-color: #6c757d; }
+        button.secondary:hover { background-color: #5a6268; }
+        .button-group { display: flex; gap: 10px; }
+        #game-board {
+            position: relative;
+            width: 100%;
+            height: 600px;
+            border: 2px solid #5a3d2b;
+            background-color: #00695c;
+            margin: 20px 0;
+            overflow: auto;
+            border-radius: 8px;
+        }
+        .domino {
+            display: flex;
+            justify-content: space-around;
+            align-items: center;
+            position: absolute;
+            background-color: #fff;
+            border: 1px solid #000;
+            border-radius: 4px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+            user-select: none;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        .domino-board {
+            width: var(--domino-width);
+            height: var(--domino-height);
+            flex-direction: row;
+        }
+        .domino-board .separator { width: 2px; height: 80%; }
+        .domino-hand {
+            width: var(--domino-height);
+            height: var(--domino-width);
+            cursor: pointer;
+            flex-direction: column;
+            position: static !important;
+            transition: transform 0.1s;
+        }
+        .domino-hand:hover { transform: scale(1.05); border-color: #007bff; border-width: 2px; }
+        .domino-half {
+            width: 50%;
+            height: 100%;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+        .domino-hand .domino-half { width: 100%; height: 50%; }
+        .separator { height: 80%; background-color: #000; width: 2px; }
+        .domino-hand .separator { height: 2px; width: 80%; }
+        #player-hand-container { margin-top: 15px; }
+        #player-hand, #players-info {
+            display: flex; flex-wrap: wrap; justify-content: center;
+            gap: 10px; margin-top: 10px; padding: 10px;
+            background: #f0f2f5; border-radius: 8px;
+        }
+        #game-status {
+            text-align: center; font-size: 1.2em; font-weight: bold;
+            margin-bottom: 15px; padding: 10px; background: #444;
+            color: white; border-radius: 4px;
+        }
+        .player-info { padding: 10px; background-color: #e4e6eb; border-radius: 4px; }
+        .player-info.current-turn { background-color: #ffd700; font-weight: bold; }
+        #rooms-list { list-style-type: none; padding: 0; }
+        #rooms-list li { background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; margin-bottom: 5px; border-radius: 4px; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <button id="logout-btn" class="secondary" style="display: none; float: right; width: auto; padding: 8px 15px;">Logout</button>
+    
+    <div id="auth-view" class="view active">
+        <h1>Bem-vindo ao Dominó!</h1>
+        <div class="form-container">
+            <h2>Registar</h2>
+            <form id="register-form">
+                <input type="text" id="register-username" placeholder="Nome de utilizador" required autocomplete="username">
+                <input type="password" id="register-password" placeholder="Senha" required autocomplete="new-password">
+                <button type="submit">Registar</button>
+            </form>
+            <hr style="margin: 20px 0; border-top: 1px solid #ccc;">
+            <h2>Login</h2>
+            <form id="login-form">
+                <input type="text" id="login-username" placeholder="Nome de utilizador" required autocomplete="username">
+                <input type="password" id="login-password" placeholder="Senha" required autocomplete="current-password">
+                <button type="submit">Login</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="lobby-view" class="view">
+        <h1>Lobby de Jogos</h1>
+        <div class="lobby-container">
+            <h2>Salas Disponíveis</h2>
+            <ul id="rooms-list"><li>A carregar salas...</li></ul>
+            <button id="refresh-rooms-btn">Atualizar Salas</button>
+            <hr style="margin: 20px 0; border-top: 1px solid #ccc;">
+            <h2>Criar / Entrar em Sala</h2>
+            <form id="join-room-form">
+                <input type="text" id="room-name" placeholder="Nome da sala" required>
+                <input type="password" id="room-password" placeholder="Senha (deixe em branco se não tiver)">
+                <button type="submit">Entrar na Sala</button>
+            </form>
+        </div>
+    </div>
+
+    <div id="game-view" class="view">
+        <div id="game-status">A aguardar jogadores...</div>
+        <div id="players-info"></div>
+        <div id="game-board"></div>
+        <div id="player-hand-container">
+             <h2>A sua mão:</h2>
+             <div id="player-hand"></div>
+        </div>
+        <div class="button-group" style="margin-top: 20px;">
+            <button id="pass-turn-btn" class="secondary">Passar a Vez</button>
+            <button id="leave-game-btn" class="secondary" style="background-color: #dc3545;">Sair da Sala</button>
+        </div>
+    </div>
+</div>
+
+<script>
+    // --- ALTERAÇÃO: A variável 'token' foi removida. O navegador gere a autenticação via cookies. ---
+    let ws = null;
+    let myId = null;
+    let myHand = [];
+    let gameState = {};
+    let pieceToPlayWithOptions = null;
+
+    // Elementos do DOM
+    const views = { auth: document.getElementById('auth-view'), lobby: document.getElementById('lobby-view'), game: document.getElementById('game-view') };
+    const registerForm = document.getElementById('register-form');
+    const loginForm = document.getElementById('login-form');
+    const joinRoomForm = document.getElementById('join-room-form');
+    const gameBoard = document.getElementById('game-board');
+    const playerHandDiv = document.getElementById('player-hand');
+    const gameStatusDiv = document.getElementById('game-status');
+    const playersInfoDiv = document.getElementById('players-info');
+    const roomsList = document.getElementById('rooms-list');
+    const refreshRoomsBtn = document.getElementById('refresh-rooms-btn');
+    const passTurnBtn = document.getElementById('pass-turn-btn');
+    const leaveGameBtn = document.getElementById('leave-game-btn');
+    const logoutBtn = document.getElementById('logout-btn');
+
+    // Funções de Utilidade
+    function showView(viewName) {
+        const isLoggedIn = document.cookie.includes('token=');
+        Object.values(views).forEach(v => v.classList.remove('active'));
+        views[viewName].classList.add('active');
+        logoutBtn.style.display = isLoggedIn ? 'block' : 'none';
+    }
+
+    function showAlert(message) { alert(message); }
+
+    // Lógica de Autenticação
+    registerForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('register-username').value;
+        const password = document.getElementById('register-password').value;
+        try {
+            const res = await fetch('/api/auth/register', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            if (!res.ok) throw new Error(JSON.stringify(await res.json()));
+            showAlert('Registo bem-sucedido! Por favor, faça o login.');
+            registerForm.reset();
+        } catch (err) { showAlert(`Erro no registo: ${err.message}`); }
+    });
+
+    loginForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const username = document.getElementById('login-username').value;
+        const password = document.getElementById('login-password').value;
+        try {
+            const res = await fetch('/api/auth/login', {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (!res.ok || !data.success) throw new Error(data.message || 'Erro desconhecido.');
+            
+            // --- ALTERAÇÃO: Não precisamos mais de guardar o token. O cookie já foi definido pelo servidor. ---
+            showView('lobby');
+            listRooms();
+        } catch (err) { showAlert(`Erro no login: ${err.message}`); }
+    });
+
+    logoutBtn.addEventListener('click', async () => {
+        try {
+            // --- ALTERAÇÃO: Chama o endpoint de logout para que o servidor limpe o cookie. ---
+            await fetch('/api/auth/logout', { method: 'POST' });
+        } catch (err) {
+            console.error('Logout falhou, mas o cliente será limpo de qualquer maneira.', err);
+        } finally {
+            myId = null;
+            if (ws) { ws.close(); ws = null; }
+            showView('auth');
+        }
+    });
+
+    // Lógica do Lobby
+    refreshRoomsBtn.addEventListener('click', listRooms);
+    
+    async function listRooms() {
+        try {
+            // --- ALTERAÇÃO: O cabeçalho de autorização foi removido. O cookie é enviado automaticamente. ---
+            const res = await fetch('/api/lobby/rooms');
+            if (!res.ok) throw new Error('Não foi possível carregar as salas. A sua sessão pode ter expirado.');
+            const data = await res.json();
+            roomsList.innerHTML = '';
+            if (data.rooms.length === 0) {
+                roomsList.innerHTML = '<li>Nenhuma sala disponível. Crie uma!</li>';
+                return;
+            }
+            data.rooms.forEach(room => {
+                const li = document.createElement('li');
+                li.textContent = `${room.name} (${room.playerCount}/${room.maxPlayers}) ${room.hasPassword ? '🔒' : ''}`;
+                roomsList.appendChild(li);
+            });
+        } catch (err) { 
+            showAlert(err.message);
+            showView('auth'); // Se houver um erro, provavelmente é de autenticação.
+        }
+    }
+
+    joinRoomForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const roomName = document.getElementById('room-name').value;
+        const password = document.getElementById('room-password').value;
+        try {
+            // --- ALTERAÇÃO: O cabeçalho de autorização foi removido. ---
+            const res = await fetch('/api/lobby/rooms', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ roomName, password })
+            });
+            if (!res.ok) throw new Error((await res.json()).message);
+            const data = await res.json();
+            connectWebSocket(data.gameServerUrl);
+        } catch (err) { showAlert(`Erro ao entrar na sala: ${err.message}`); }
+    });
+
+    // Lógica do Jogo
+    passTurnBtn.addEventListener('click', () => {
+        if (ws && gameState.turn === myId) ws.send(JSON.stringify({ type: 'PASS_TURN' }));
+        else showAlert('Não é a sua vez de passar.');
+    });
+
+    leaveGameBtn.addEventListener('click', () => {
+        if (ws && confirm('Tem a certeza que quer abandonar a partida?')) {
+            ws.send(JSON.stringify({ type: 'LEAVE_GAME' }));
+            showView('lobby');
+        }
+    });
+
+    function connectWebSocket(url) {
+        if(ws) { ws.close(); }
+        // --- ALTERAÇÃO: Não adicionamos mais o token à URL. O cookie será usado para autenticação. ---
+        ws = new WebSocket(url.replace('http', 'ws'));
+
+        ws.onopen = () => { console.log('Conectado ao servidor de jogo!'); showView('game'); };
+        ws.onmessage = (event) => {
+            const message = JSON.parse(event.data);
+            console.log('Mensagem recebida:', message);
+            handleWebSocketMessage(message);
+        };
+        ws.onclose = () => { console.log('Desconectado do servidor de jogo.'); showAlert('A conexão com o servidor foi perdida.'); showView('lobby'); };
+        ws.onerror = (err) => { console.error('Erro de WebSocket:', err); showAlert('Ocorreu um erro de conexão.'); };
+    }
+
+    // A função 'handleWebSocketMessage' e a lógica de renderização ('renderGame', 'createDominoElement')
+    // permanecem exatamente iguais e não precisam de ser alteradas.
+
+    function handleWebSocketMessage(message) {
+        // ... (Esta função não muda)
+        switch (message.type) {
+            case 'JOGO_INICIADO':
+                gameState = message;
+                myId = message.myId;
+                myHand = message.yourHand;
+                renderGame();
+                break;
+            case 'ESTADO_ATUALIZADO':
+                gameState = message;
+                renderGame();
+                break;
+            case 'UPDATE_HAND':
+                myHand = message.yourNewHand;
+                renderGame();
+                break;
+            case 'CHOOSE_PLACEMENT':
+                pieceToPlayWithOptions = message;
+                showAlert(`A sua peça ${message.piece.value1}-${message.piece.value2} pode ser jogada em mais de um lugar. Clique numa ponta válida no tabuleiro.`);
+                renderGame();
+                break;
+            case 'JOGO_TERMINADO':
+                showAlert(`Fim de jogo! Vencedor: ${message.winner}. Motivo: ${message.reason}`);
+                showView('lobby');
+                listRooms();
+                break;
+            case 'ERRO':
+                showAlert(`Erro: ${message.message}`);
+                pieceToPlayWithOptions = null;
+                renderGame();
+                break;
+        }
+    }
+    
+    function renderGame() {
+        // ... (Esta função não muda)
+        if (!gameState.players && myHand.length === 0) return;
+        passTurnBtn.disabled = gameState.turn !== myId;
+        gameStatusDiv.textContent = gameState.turn === myId ? "É a sua vez!" : `Aguardando a vez de ${gameState.players?.find(p => p.id === gameState.turn)?.username || '...'}`;
+        gameStatusDiv.style.color = gameState.turn === myId ? '#ffd700' : '#fff';
+        playersInfoDiv.innerHTML = '';
+        (gameState.players || []).forEach(p => {
+            const playerDiv = document.createElement('div');
+            playerDiv.className = 'player-info';
+            if (p.id === gameState.turn) playerDiv.classList.add('current-turn');
+            const pieceCount = gameState.playerPieceCounts ? gameState.playerPieceCounts[p.id] : (p.id === myId ? myHand.length : '...');
+            playerDiv.textContent = `${p.username}: ${pieceCount} peças`;
+            if (p.disconnectedSince) {
+                 playerDiv.textContent += " (desconectado)";
+                 playerDiv.style.opacity = '0.5';
+            }
+            playersInfoDiv.appendChild(playerDiv);
+        });
+        playerHandDiv.innerHTML = '';
+        myHand.forEach(piece => {
+            const dominoEl = createDominoElement(piece, true);
+            dominoEl.onclick = () => {
+                if (gameState.turn !== myId) return showAlert('Não é a sua vez.');
+                if (pieceToPlayWithOptions) return showAlert('Você precisa de escolher onde jogar a peça anterior.');
+                ws.send(JSON.stringify({ type: 'PLAY_PIECE', piece }));
+            };
+            playerHandDiv.appendChild(dominoEl);
+        });
+        gameBoard.innerHTML = '';
+        const boardRect = gameBoard.getBoundingClientRect();
+        const centerX = boardRect.width / 2;
+        const centerY = boardRect.height / 2;
+        const spacing = 22;
+        (gameState.board || []).forEach(placedDomino => {
+            const dominoEl = createDominoElement(placedDomino.piece, false, placedDomino.rotation);
+            const xPos = centerX + placedDomino.x * spacing;
+            const yPos = centerY + placedDomino.y * spacing;
+            dominoEl.style.transform = `translate(${xPos}px, ${yPos}px) rotate(${placedDomino.rotation}deg)`;
+            dominoEl.style.transformOrigin = 'top left'; 
+            gameBoard.appendChild(dominoEl);
+        });
+        if(pieceToPlayWithOptions) {
+             (gameState.activeEnds || []).forEach(end => {
+                const isValidOption = pieceToPlayWithOptions.options.some(opt => opt.endId === end.id);
+                if (isValidOption) {
+                    const endEl = document.createElement('div');
+                    endEl.style.position = 'absolute';
+                    endEl.style.width = '20px';
+                    endEl.style.height = '20px';
+                    endEl.style.backgroundColor = 'rgba(255, 255, 0, 0.5)';
+                    endEl.style.border = '2px solid yellow';
+                    endEl.style.borderRadius = '50%';
+                    endEl.style.cursor = 'pointer';
+                    const xPos = centerX + end.x * spacing - 10;
+                    const yPos = centerY + end.y * spacing - 10;
+                    endEl.style.transform = `translate(${xPos}px, ${yPos}px)`;
+                    endEl.onclick = () => {
+                        ws.send(JSON.stringify({
+                            type: 'PLAY_PIECE', piece: pieceToPlayWithOptions.piece, endId: end.id
+                        }));
+                        pieceToPlayWithOptions = null;
+                    };
+                    gameBoard.appendChild(endEl);
+                }
+             });
+        }
+    }
+
+    function createDominoElement(piece, isHand, rotation = 0) {
+        // ... (Esta função não muda)
+        const dominoEl = document.createElement('div');
+        const isVertical = rotation === 90 || rotation === 270;
+        dominoEl.className = 'domino' + (isHand ? ' domino-hand' : ' domino-board');
+        if (!isHand) {
+            dominoEl.style.width = isVertical ? 'var(--domino-height)' : 'var(--domino-width)';
+            dominoEl.style.height = isVertical ? 'var(--domino-width)' : 'var(--domino-height)';
+            dominoEl.style.flexDirection = isVertical ? 'column' : 'row';
+        }
+        const value1Div = `<div class="domino-half">${piece.value1}</div>`;
+        const value2Div = `<div class="domino-half">${piece.value2}</div>`;
+        const separator = `<div class="separator"></div>`;
+        dominoEl.innerHTML = isVertical ? `${value1Div}${separator}${value2Div}` : `${value1Div}${separator}${value2Div}`;
+        return dominoEl;
+    }
+
+</script>
+
+</body>
+</html>
