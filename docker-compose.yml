@@ -1,5 +1,4 @@
-version: '3.8'
-
+# A chave "version" foi removida, pois é obsoleta e não mais necessária.
 services:
   postgres:
     image: postgres:13
@@ -21,7 +20,6 @@ services:
     build:
       context: ./backend
     container_name: backend-server-1
-    # A ESTRUTURA CORRETA É UMA LISTA (com hífens)
     environment:
       - PORT=4001
       - SERVER_ID=server-1
@@ -29,11 +27,10 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
     volumes:
-      - ./backend:/usr/src/app
       - /usr/src/app/node_modules
     develop:
       watch:
-        - action: rebuild
+        - action: sync
           path: ./backend
           target: /usr/src/app
           ignore:
@@ -47,7 +44,6 @@ services:
     build:
       context: ./backend
     container_name: backend-server-2
-    # A ESTRUTURA CORRETA É UMA LISTA (com hífens)
     environment:
       - PORT=4002
       - SERVER_ID=server-2
@@ -55,11 +51,10 @@ services:
       - REDIS_URL=redis://redis:6379
       - JWT_SECRET=${JWT_SECRET}
     volumes:
-      - ./backend:/usr/src/app
       - /usr/src/app/node_modules
     develop:
       watch:
-        - action: rebuild
+        - action: sync
           path: ./backend
           target: /usr/src/app
           ignore:

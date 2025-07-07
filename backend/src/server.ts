@@ -2,6 +2,7 @@
 import server from './app';
 import { redisClient, subscriber } from './config/redis';
 import { pool } from './config/database';
+import { initDatabase } from './config/init-db';
 
 const PORT = process.env.PORT || 4000;
 const SERVER_ID = process.env.SERVER_ID || 'default-server';
@@ -27,6 +28,9 @@ const startServer = async () => {
         await connectWithRetry('Redis Publisher', () => redisClient.connect());
         await connectWithRetry('Redis Subscriber', () => subscriber.connect());
         await connectWithRetry('PostgreSQL', () => pool.query('SELECT NOW()'));
+
+        // Adiciona a inicialização do banco de dados aqui
+        await initDatabase();
 
         await redisClient.sAdd('available_game_servers', SERVER_ID);
         console.log(`[${SERVER_ID}] Servidor registado como disponível no Redis.`);
