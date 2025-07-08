@@ -3,648 +3,115 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Jogo de Dominó</title>
-    <style>
-        :root {
-            --domino-width: 40px;
-            --domino-height: 20px;
-        }
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            background-color: #f0f2f5;
-            display: flex;
-            justify-content: center;
-            align-items: flex-start;
-            padding-top: 20px;
-            min-height: 100vh;
-            margin: 0;
-            color: #333;
-        }
-        .container {
-            background-color: white;
-            padding: 20px;
-            border-radius: 8px;
-            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-            width: 95%;
-            max-width: 1200px;
-            transition: all 0.3s ease;
-        }
-        .view { display: none; }
-        .view.active { display: block; }
-        h1, h2 {
-            text-align: center;
-            color: #1c1e21;
-        }
-        .form-container, .lobby-container {
-            max-width: 400px;
-            margin: 0 auto;
-        }
-        input {
-            width: calc(100% - 22px);
-            padding: 12px;
-            margin-bottom: 12px;
-            border: 1px solid #dddfe2;
-            border-radius: 6px;
-            font-size: 16px;
-        }
-        button {
-            width: 100%;
-            padding: 12px;
-            border: none;
-            border-radius: 6px;
-            background-color: #007bff;
-            color: white;
-            font-size: 16px;
-            font-weight: bold;
-            cursor: pointer;
-            margin-top: 8px;
-            transition: background-color 0.2s;
-        }
-        button:hover { background-color: #0069d9; }
-        button:disabled { background-color: #ccc; cursor: not-allowed; }
-        button.secondary { background-color: #6c757d; }
-        button.secondary:hover { background-color: #5a6268; }
-        .button-group { display: flex; gap: 10px; }
-        #game-board {
-            position: relative;
-            width: 100%;
-            height: 600px;
-            border: 2px solid #5a3d2b;
-            background-color: #00695c;
-            margin: 20px 0;
-            overflow: auto;
-            border-radius: 8px;
-        }
-        .domino {
-            display: flex;
-            justify-content: space-around;
-            align-items: center;
-            position: absolute;
-            background-color: #fff;
-            border: 1px solid #000;
-            border-radius: 4px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.3);
-            user-select: none;
-            font-size: 12px;
-            font-weight: bold;
-        }
-        .domino-board {
-            width: var(--domino-width);
-            height: var(--domino-height);
-            flex-direction: row;
-        }
-        .domino-board .separator { width: 2px; height: 80%; }
-        .domino-hand {
-            width: var(--domino-height);
-            height: var(--domino-width);
-            cursor: pointer;
-            flex-direction: column;
-            position: static !important;
-            transition: transform 0.1s;
-        }
-        .domino-hand:hover { transform: scale(1.05); border-color: #007bff; border-width: 2px; }
-        .domino-half {
-            width: 50%;
-            height: 100%;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-        }
-        .domino-hand .domino-half { width: 100%; height: 50%; }
-        .separator { height: 80%; background-color: #000; width: 2px; }
-        .domino-hand .separator { height: 2px; width: 80%; }
-        #player-hand-container { margin-top: 15px; }
-        #player-hand, #players-info {
-            display: flex; flex-wrap: wrap; justify-content: center;
-            gap: 10px; margin-top: 10px; padding: 10px;
-            background: #f0f2f5; border-radius: 8px;
-        }
-        #game-status {
-            text-align: center; font-size: 1.2em; font-weight: bold;
-            margin-bottom: 15px; padding: 10px; background: #444;
-            color: white; border-radius: 4px;
-        }
-        .player-info { padding: 10px; background-color: #e4e6eb; border-radius: 4px; }
-        .player-info.current-turn { background-color: #ffd700; font-weight: bold; }
-        #rooms-list { list-style-type: none; padding: 0; }
-        #rooms-list li { background: #f8f9fa; padding: 10px; border: 1px solid #dee2e6; margin-bottom: 5px; border-radius: 4px; }
-    </style>
+    <title>Dominó Multiplayer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/css/style.css">
 </head>
 <body>
 
-<div class="container">
-    <button id="logout-btn" class="secondary" style="display: none; float: right; width: auto; padding: 8px 15px;">Logout</button>
+<div class="main-container">
+    <button id="logout-btn" class="btn btn-secondary btn-logout" style="display: none;">Logout</button>
     
+    <!-- Auth View (Login / Register) -->
     <div id="auth-view" class="view active">
-        <h1>Bem-vindo ao Dominó!</h1>
+        <div class="logo-header">
+            <h1>DOMINÓ <span class="domino-icon"></span> ONLINE</h1>
+            <p>Entre ou registe-se para começar a jogar!</p>
+        </div>
+        
         <div class="form-container">
-            <h2>Registar</h2>
-            <form id="register-form">
-                <input type="text" id="register-username" placeholder="Nome de utilizador" required autocomplete="username">
-                <input type="password" id="register-password" placeholder="Senha" required autocomplete="new-password">
-                <button type="submit">Registar</button>
-            </form>
-            <hr style="margin: 20px 0; border-top: 1px solid #ccc;">
-            <h2>Login</h2>
-            <form id="login-form">
-                <input type="text" id="login-username" placeholder="Nome de utilizador" required autocomplete="username">
-                <input type="password" id="login-password" placeholder="Senha" required autocomplete="current-password">
-                <button type="submit">Login</button>
-            </form>
-        </div>
-    </div>
-
-    <div id="lobby-view" class="view">
-        <h1>Lobby de Jogos</h1>
-        <div class="lobby-container">
-            <h2>Salas Disponíveis</h2>
-            <ul id="rooms-list"><li>A carregar salas...</li></ul>
-            <button id="refresh-rooms-btn">Atualizar Salas</button>
-            <hr style="margin: 20px 0; border-top: 1px solid #ccc;">
-            <h2>Criar / Entrar em Sala</h2>
-            <form id="join-room-form">
-                <input type="text" id="room-name" placeholder="Nome da sala" required>
-                <input type="password" id="room-password" placeholder="Senha (deixe em branco se não tiver)">
-                <button type="submit">Entrar na Sala</button>
-            </form>
-        </div>
-    </div>
-
-    <div id="game-view" class="view">
-        <div id="game-status">A aguardar jogadores...</div>
-        <button id="start-game-btn" style="display: none; max-width: 400px; margin: 10px auto;">Iniciar Jogo</button>
-        <div id="turn-timer" style="text-align: center; font-size: 1.5em; color: #ffc107; font-weight: bold; margin-bottom: 10px; display: none;"></div>
-        <div id="players-info"></div>
-        <div id="game-board"></div>
-        <div id="player-hand-container" style="display: none;">
-             <h2>A sua mão:</h2>
-             <div id="player-hand"></div>
-        </div>
-        <div id="game-controls" class="button-group" style="margin-top: 20px;">
-            <button id="pass-turn-btn" class="secondary" style="display: none;">Passar a Vez</button>
+            <div id="login-section">
+                <div class="form-header"><h2>Entrar na Conta</h2></div>
+                <form id="login-form">
+                    <div class="input-group">
+                        <label for="login-username">Nome de Utilizador</label>
+                        <input type="text" id="login-username" placeholder="O seu nome de utilizador" required autocomplete="username">
+                    </div>
+                    <div class="input-group">
+                        <label for="login-password">Senha</label>
+                        <input type="password" id="login-password" placeholder="A sua senha" required autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="btn">Login</button>
+                </form>
+                <div class="form-link">
+                    Não tem uma conta? <a href="#" id="show-register-link">Crie uma agora</a>
+                </div>
             </div>
-        <button id="leave-game-btn" class="secondary" style="background-color: #dc3545; max-width: 400px; margin: 10px auto;">Sair da Sala</button>
+
+            <div id="register-section" style="display: none;">
+                 <div class="form-header"><h2>Criar Nova Conta</h2></div>
+                <form id="register-form">
+                    <div class="input-group">
+                        <label for="register-username">Nome de Utilizador</label>
+                        <input type="text" id="register-username" placeholder="Escolha um nome de utilizador" required autocomplete="username">
+                    </div>
+                    <div class="input-group">
+                        <label for="register-password">Senha</label>
+                        <input type="password" id="register-password" placeholder="Escolha uma senha segura" required autocomplete="new-password">
+                    </div>
+                    <button type="submit" class="btn">Registar</button>
+                </form>
+                <div class="form-link">
+                    Já tem uma conta? <a href="#" id="show-login-link">Faça o login</a>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Lobby View -->
+    <div id="lobby-view" class="view">
+        <div class="game-container">
+            <h1>Lobby de Jogos</h1>
+            <div class="lobby-content">
+                <h2>Salas Disponíveis</h2>
+                <ul id="rooms-list"><li>A carregar salas...</li></ul>
+                <button id="refresh-rooms-btn" class="btn btn-secondary">Atualizar Salas</button>
+                <hr>
+                <h2>Criar / Entrar em Sala</h2>
+                <form id="join-room-form">
+                    <input type="text" id="room-name" placeholder="Nome da sala" required>
+                    <input type="password" id="room-password" placeholder="Senha (opcional)">
+                    <button type="submit" class="btn">Entrar / Criar Sala</button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Game View -->
+    <div id="game-view" class="view">
+        <div class="game-container">
+            <div id="game-status">A aguardar jogadores...</div>
+            <button id="start-game-btn" class="btn" style="display: none; margin: 10px auto;">Iniciar Jogo</button>
+            <div id="turn-timer"></div>
+            
+            <div id="players-info-container">
+                <h3>Jogadores</h3>
+                <div id="players-info"></div>
+            </div>
+
+            <div id="game-board"></div>
+
+            <div id="player-hand-container" style="display: none;">
+                <h3>A sua mão</h3>
+                <div id="player-hand"></div>
+            </div>
+            
+            <div id="game-controls">
+                <button id="pass-turn-btn" class="btn btn-secondary" style="display: none;">Passar a Vez</button>
+                <button id="leave-game-btn" class="btn btn-danger">Sair da Sala</button>
+            </div>
+        </div>
+    </div>
+</div>
+<div id="alert-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content">
+        <p id="alert-message"></p>
+        <button id="alert-close-btn" class="btn">OK</button>
     </div>
 </div>
 
-<script>
-    let ws = null;
-    let myId = null;
-    let roomState = {};
-    let myHand = [];
-    let gameState = {};
-    let pieceToPlayWithOptions = null;
-    let intentionalDisconnect = false;
-    let reconnectAttempts = 0;
-    const maxReconnectAttempts = 3;
-    let turnTimerInterval = null;
-
-    const views = { 
-        auth: document.getElementById('auth-view'), 
-        lobby: document.getElementById('lobby-view'), 
-        game: document.getElementById('game-view'),
-    };
-    const registerForm = document.getElementById('register-form');
-    const loginForm = document.getElementById('login-form');
-    const joinRoomForm = document.getElementById('join-room-form');
-    const gameBoard = document.getElementById('game-board');
-    const playerHandDiv = document.getElementById('player-hand');
-    const gameStatusDiv = document.getElementById('game-status');
-    const turnTimerDiv = document.getElementById('turn-timer');
-    const playersInfoDiv = document.getElementById('players-info');
-    const roomsList = document.getElementById('rooms-list');
-    const refreshRoomsBtn = document.getElementById('refresh-rooms-btn');
-    const passTurnBtn = document.getElementById('pass-turn-btn');
-    const leaveGameBtn = document.getElementById('leave-game-btn');
-    const logoutBtn = document.getElementById('logout-btn');
-    const startGameBtn = document.getElementById('start-game-btn');
-    const playerHandContainer = document.getElementById('player-hand-container');
-    const gameControls = document.getElementById('game-controls');
-
-    function showView(viewName) {
-        const isLoggedIn = !!document.cookie.split('; ').find(row => row.startsWith('token='));
-        Object.values(views).forEach(v => v.classList.remove('active'));
-        if (views[viewName]) {
-             views[viewName].classList.add('active');
-        }
-        logoutBtn.style.display = isLoggedIn ? 'block' : 'none';
-    }
-
-    function showAlert(message) { alert(message); }
-    
-    async function checkForActiveGame() {
-        try {
-            const res = await fetch('/api/lobby/rejoin');
-            if(!res.ok) {
-                showView('lobby');
-                listRooms();
-                return;
-            }
-            const data = await res.json();
-            if (data.active_game) {
-                showAlert('Reconectando a uma partida em andamento...');
-                connectWebSocket(data.gameServerUrl);
-            } else {
-                showView('lobby');
-                listRooms();
-            }
-        } catch (err) {
-            showView('lobby');
-            listRooms();
-        }
-    }
-
-    registerForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const username = document.getElementById('register-username').value;
-        const password = document.getElementById('register-password').value;
-        try {
-            const res = await fetch('/api/auth/register', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(JSON.stringify(data));
-            showAlert('Registo bem-sucedido! Por favor, faça o login.');
-            registerForm.reset();
-        } catch (err) {
-            try {
-                const errorObj = JSON.parse(err.message);
-                const errorMsg = errorObj.errors ? errorObj.errors[0].msg : errorObj.message;
-                showAlert(`Erro no registo: ${errorMsg}`);
-            } catch {
-                showAlert('Ocorreu um erro desconhecido no registo.');
-            }
-        }
-    });
-
-    loginForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const username = document.getElementById('login-username').value;
-        const password = document.getElementById('login-password').value;
-        try {
-            const res = await fetch('/api/auth/login', {
-                method: 'POST', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            const data = await res.json();
-            if (!res.ok || !data.success) throw new Error(data.message || 'Erro desconhecido.');
-            checkForActiveGame();
-        } catch (err) { showAlert(`Erro no login: ${err.message}`); }
-    });
-    
-    startGameBtn.addEventListener('click', () => {
-        if(ws && roomState.hostId === myId) {
-            ws.send(JSON.stringify({ type: 'START_GAME' }));
-        }
-    });
-
-    logoutBtn.addEventListener('click', async () => {
-        try {
-            intentionalDisconnect = true;
-            if (ws) { ws.close(); ws = null; }
-            await fetch('/api/auth/logout', { method: 'POST' });
-        } catch (err) {
-            console.error('Logout falhou, mas o cliente será limpo de qualquer maneira.', err);
-        } finally {
-            myId = null;
-            showView('auth');
-        }
-    });
-
-    refreshRoomsBtn.addEventListener('click', listRooms);
-    
-    async function listRooms() {
-        try {
-            const res = await fetch('/api/lobby/rooms');
-            if (!res.ok) throw new Error('Não foi possível carregar as salas. A sua sessão pode ter expirado.');
-            const data = await res.json();
-            
-            while (roomsList.firstChild) {
-                roomsList.removeChild(roomsList.firstChild);
-            }
-
-            if (data.rooms.length === 0) {
-                const li = document.createElement('li');
-                li.textContent = 'Nenhuma sala disponível. Crie uma!';
-                roomsList.appendChild(li);
-                return;
-            }
-
-            data.rooms.forEach(room => {
-                const li = document.createElement('li');
-                li.textContent = `${room.name} (${room.playerCount}/${room.maxPlayers}) ${room.hasPassword ? '🔒' : ''}`;
-                roomsList.appendChild(li);
-            });
-        } catch (err) { 
-            showAlert(err.message);
-            showView('auth');
-        }
-    }
-
-    joinRoomForm.addEventListener('submit', async (e) => {
-        e.preventDefault();
-        const roomName = document.getElementById('room-name').value;
-        const password = document.getElementById('room-password').value;
-        try {
-            const res = await fetch('/api/lobby/rooms', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ roomName, password })
-            });
-            if (!res.ok) throw new Error((await res.json()).message);
-            const data = await res.json();
-            connectWebSocket(data.gameServerUrl);
-        } catch (err) { showAlert(`Erro ao entrar na sala: ${err.message}`); }
-    });
-
-    passTurnBtn.addEventListener('click', () => {
-        if (ws && gameState.turn === myId) ws.send(JSON.stringify({ type: 'PASS_TURN' }));
-        else showAlert('Não é a sua vez de passar.');
-    });
-    
-    const leaveRoom = () => {
-        intentionalDisconnect = true;
-        if (ws) {
-            ws.close();
-            ws = null;
-        }
-        gameState = {};
-        roomState = {};
-        myHand = [];
-        pieceToPlayWithOptions = null;
-        renderGameState();
-
-        showView('lobby');
-        listRooms();
-    };
-
-    leaveGameBtn.addEventListener('click', () => {
-        if (confirm('Tem a certeza que quer abandonar a partida?')) {
-            leaveRoom();
-        }
-    });
-
-    function connectWebSocket(url) {
-        if(ws) { 
-            intentionalDisconnect = true;
-            ws.close(); 
-        }
-        intentionalDisconnect = false;
-        
-        ws = new WebSocket(url);
-
-        ws.onopen = () => {
-            console.log('Conectado ao servidor de jogo!');
-            reconnectAttempts = 0;
-        };
-
-        ws.onmessage = (event) => {
-            const message = JSON.parse(event.data);
-            console.log('Mensagem recebida:', message);
-            handleWebSocketMessage(message);
-        };
-
-        ws.onclose = () => {
-            console.log('Desconectado do servidor de jogo.');
-            clearInterval(turnTimerInterval);
-            if (intentionalDisconnect) {
-                console.log('Desconexão intencional, não tentarei reconectar.');
-                return;
-            }
-            
-            if (reconnectAttempts < maxReconnectAttempts) {
-                reconnectAttempts++;
-                const delay = Math.pow(2, reconnectAttempts) * 1000;
-                console.log(`Tentando reconectar em ${delay / 1000}s... (tentativa ${reconnectAttempts})`);
-                setTimeout(() => connectWebSocket(url), delay);
-            } else {
-                showAlert('A conexão com o servidor foi perdida. Por favor, recarregue a página.');
-                showView('lobby');
-            }
-        };
-
-        ws.onerror = (err) => {
-            console.error('Erro de WebSocket:', err);
-            ws.close();
-        };
-    }
-
-    function handleWebSocketMessage(message) {
-        switch (message.type) {
-            case 'ROOM_STATE':
-                roomState = message;
-                if (message.myId) myId = message.myId;
-                renderLobbyState();
-                showView('game');
-                break;
-            case 'JOGO_INICIADO':
-            case 'ESTADO_ATUALIZADO':
-                gameState = message;
-                if(message.myId) myId = message.myId;
-                if(message.yourHand) myHand = message.yourHand; 
-                renderGameState();
-                showView('game');
-                break;
-            case 'UPDATE_HAND':
-                myHand = message.yourNewHand;
-                renderGameState(); 
-                break;
-            case 'CHOOSE_PLACEMENT':
-                pieceToPlayWithOptions = message;
-                showAlert(`A sua peça ${message.piece.value1}-${message.piece.value2} pode ser jogada em mais de um lugar. Clique numa ponta válida no tabuleiro.`);
-                renderGameState();
-                break;
-            case 'JOGO_TERMINADO':
-                showAlert(`Fim de jogo! Vencedor: ${message.winner}. Motivo: ${message.reason}`);
-                leaveRoom();
-                break;
-            case 'ROOM_REMOVED':
-                if (views.lobby.classList.contains('active')) {
-                    const roomItem = Array.from(roomsList.children).find(li => li.textContent.startsWith(message.roomName));
-                    if(roomItem) roomItem.remove();
-                }
-                break;
-            case 'ERRO':
-                showAlert(`Erro: ${message.message}`);
-                pieceToPlayWithOptions = null;
-                break;
-        }
-    }
-    
-    function renderLobbyState() {
-        gameStatusDiv.textContent = `A aguardar jogadores... ${roomState.playerCount} de 4`;
-        
-        if(roomState.hostId === myId && roomState.status === 'waiting') {
-            startGameBtn.style.display = 'block';
-            startGameBtn.disabled = roomState.playerCount < 2;
-        } else {
-            startGameBtn.style.display = 'none';
-        }
-
-        gameBoard.innerHTML = '';
-        playerHandContainer.style.display = 'none';
-        gameControls.style.display = 'none';
-        turnTimerDiv.style.display = 'none';
-        
-        playersInfoDiv.innerHTML = '';
-        (roomState.players || []).forEach(p => {
-            const playerDiv = document.createElement('div');
-            playerDiv.className = 'player-info';
-            playerDiv.textContent = `${p.username || `User ${p.id}`} ${p.id === roomState.hostId ? '⭐' : ''}`;
-            playersInfoDiv.appendChild(playerDiv);
-        });
-    }
-
-    function renderGameState() {
-        if (!gameState || !gameState.players) {
-            renderLobbyState();
-            return;
-        }
-
-        // Lógica para a interface de observador
-        if (gameState.isSpectator) {
-            gameStatusDiv.textContent = 'Modo Espectador';
-            startGameBtn.style.display = 'none';
-            playerHandContainer.style.display = 'none';
-            gameControls.style.display = 'none';
-            turnTimerDiv.style.display = 'none';
-            leaveGameBtn.style.display = 'block'; // Garante que o botão de sair está visível
-        } else {
-            startGameBtn.style.display = 'none';
-            playerHandContainer.style.display = 'block';
-            gameControls.style.display = 'block';
-            passTurnBtn.style.display = 'inline-block';
-            leaveGameBtn.style.display = 'inline-block';
-            passTurnBtn.disabled = gameState.turn !== myId;
-
-            const currentPlayer = gameState.players.find(p => p.id === gameState.turn);
-            gameStatusDiv.textContent = gameState.turn === myId ? "É a sua vez!" : `Aguardando a vez de ${currentPlayer?.username || '...'}`;
-            
-            clearInterval(turnTimerInterval);
-            if (gameState.turn === myId) {
-                turnTimerDiv.style.display = 'block';
-                let timeLeft = 30;
-                const updateTimerDisplay = () => {
-                    turnTimerDiv.textContent = `Tempo Restante: ${timeLeft}s`;
-                    turnTimerDiv.style.color = timeLeft <= 10 ? '#dc3545' : '#ffc107';
-                };
-                updateTimerDisplay();
-                turnTimerInterval = setInterval(() => {
-                    timeLeft--;
-                    updateTimerDisplay();
-                    if (timeLeft <= 0) clearInterval(turnTimerInterval);
-                }, 1000);
-            } else {
-                turnTimerDiv.style.display = 'none';
-            }
-        }
-        
-        while (playersInfoDiv.firstChild) { playersInfoDiv.removeChild(playersInfoDiv.firstChild); }
-        while (playerHandDiv.firstChild) { playerHandDiv.removeChild(playerHandDiv.firstChild); }
-        while (gameBoard.firstChild) { gameBoard.removeChild(gameBoard.firstChild); }
-
-        (gameState.players || []).forEach(p => {
-            const playerDiv = document.createElement('div');
-            playerDiv.className = 'player-info';
-            if (gameState.turn === p.id) playerDiv.classList.add('current-turn');
-            const pieceCount = gameState.playerPieceCounts ? gameState.playerPieceCounts[p.id] : 0;
-            playerDiv.textContent = `${p.username || `User ${p.id}`}: ${pieceCount} peças`;
-            if (p.disconnectedSince) {
-                 playerDiv.textContent += " (desconectado)";
-                 playerDiv.style.opacity = '0.5';
-            }
-            playersInfoDiv.appendChild(playerDiv);
-        });
-
-        (myHand || []).forEach(piece => {
-            const dominoEl = createDominoElement(piece, true);
-            dominoEl.onclick = () => {
-                if (gameState.isSpectator) return;
-                if (gameState.turn !== myId) return showAlert('Não é a sua vez.');
-                if (pieceToPlayWithOptions) return showAlert('Você precisa de escolher onde jogar a peça anterior.');
-                ws.send(JSON.stringify({ type: 'PLAY_PIECE', piece }));
-            };
-            playerHandDiv.appendChild(dominoEl);
-        });
-        
-        const boardRect = gameBoard.getBoundingClientRect();
-        const centerX = boardRect.width / 2;
-        const centerY = boardRect.height / 2;
-        const spacing = 22;
-        (gameState.board || []).forEach(placedDomino => {
-            const dominoEl = createDominoElement(placedDomino.piece, false, placedDomino.rotation);
-            const xPos = centerX + placedDomino.x * spacing;
-            const yPos = centerY + placedDomino.y * spacing;
-            dominoEl.style.transform = `translate(${xPos}px, ${yPos}px) rotate(${placedDomino.rotation}deg)`;
-            dominoEl.style.transformOrigin = 'top left'; 
-            gameBoard.appendChild(dominoEl);
-        });
-
-        if(pieceToPlayWithOptions) {
-             (gameState.activeEnds || []).forEach(end => {
-                const isValidOption = pieceToPlayWithOptions.options.some(opt => opt.endId === end.id);
-                if (isValidOption) {
-                    const endEl = document.createElement('div');
-                    endEl.style.position = 'absolute';
-                    endEl.style.width = '20px';
-                    endEl.style.height = '20px';
-                    endEl.style.backgroundColor = 'rgba(255, 255, 0, 0.5)';
-                    endEl.style.border = '2px solid yellow';
-                    endEl.style.borderRadius = '50%';
-                    endEl.style.cursor = 'pointer';
-                    const xPos = centerX + end.x * spacing - 10;
-                    const yPos = centerY + end.y * spacing - 10;
-                    endEl.style.transform = `translate(${xPos}px, ${yPos}px)`;
-                    endEl.onclick = () => {
-                        ws.send(JSON.stringify({
-                            type: 'PLAY_PIECE', piece: pieceToPlayWithOptions.piece, endId: end.id
-                        }));
-                        pieceToPlayWithOptions = null;
-                    };
-                    gameBoard.appendChild(endEl);
-                }
-             });
-        }
-    }
-
-    function createDominoElement(piece, isHand, rotation = 0) {
-        const dominoEl = document.createElement('div');
-        const isVertical = rotation === 90 || rotation === 270;
-        dominoEl.className = 'domino' + (isHand ? ' domino-hand' : ' domino-board');
-        
-        if (!isHand) {
-            dominoEl.style.width = isVertical ? 'var(--domino-height)' : 'var(--domino-width)';
-            dominoEl.style.height = isVertical ? 'var(--domino-width)' : 'var(--domino-height)';
-            dominoEl.style.flexDirection = isVertical ? 'column' : 'row';
-        }
-
-        const value1Div = document.createElement('div');
-        value1Div.className = 'domino-half';
-        value1Div.textContent = piece.value1;
-
-        const separator = document.createElement('div');
-        separator.className = 'separator';
-
-        const value2Div = document.createElement('div');
-        value2Div.className = 'domino-half';
-        value2Div.textContent = piece.value2;
-
-        dominoEl.appendChild(value1Div);
-        dominoEl.appendChild(separator);
-        dominoEl.appendChild(value2Div);
-
-        return dominoEl;
-    }
-
-    window.onload = () => {
-        if (document.cookie.includes('token=')) {
-            checkForActiveGame();
-        } else {
-            showView('auth');
-        }
-    };
-</script>
-
+<script src="/js/main.js" type="module"></script>
 </body>
 </html>

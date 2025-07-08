@@ -92,14 +92,6 @@ export const getPublicState = (gameState: GameState) => {
     };
 };
 
-function getSecondCell(x: number, y: number, rotation: 0 | 90 | 180 | 270): { x2: number, y2: number } {
-    if (rotation === 0) return { x2: x + 1, y2: y };
-    if (rotation === 90) return { x2: x, y2: y + 1 };
-    if (rotation === 180) return { x2: x - 1, y2: y };
-    if (rotation === 270) return { x2: x, y2: y - 1 };
-    return { x2: x, y2: y };
-}
-
 export const changeTurn = (gameState: GameState, nextPlayerId: string, roomId: string) => {
     gameState.turn = nextPlayerId;
     broadcastToRoom(roomId, { type: 'ESTADO_ATUALIZADO', ...getPublicState(gameState) });
@@ -125,23 +117,26 @@ export function handlePlayPiece(initialGameState: GameState, userId: string, dat
     }
 
     const pieceToPlay = { ...hand[pieceIndex] };
+    const isDouble = pieceToPlay.value1 === pieceToPlay.value2;
 
     let newPlacedPiece: PlacedDomino;
     let nextActiveEnds: BoardEnd[];
-    let nextOccupiedCells: Record<string, boolean>;
+    const pieceHeightUnits = 1; // altura de uma peça é 1 unidade (36px)
+    const pieceWidthUnits = 2;  // largura de uma peça é 2 unidades (72px)
 
     if (initialGameState.board.length === 0) {
-        newPlacedPiece = { piece: pieceToPlay, x: 0, y: 0, rotation: 0 };
-        const { x2, y2 } = getSecondCell(0, 0, 0);
-
-        nextOccupiedCells = {
-            ...initialGameState.occupiedCells,
-            '0,0': true,
-            [`${x2},${y2}`]: true,
-        };
+        // Rotação: 0 para normal (horizontal), 90 para bucha (vertical)
+        const rotation = isDouble ? 90 : 0;
+        newPlacedPiece = { piece: pieceToPlay, x: 0, y: 0, rotation: rotation as any };
+        
+        // As pontas consideram a orientação
+        const width = isDouble ? pieceHeightUnits : pieceWidthUnits;
+        const leftEndPos = -width / 2;
+        const rightEndPos = width / 2;
+        
         nextActiveEnds = [
-            { id: `end-left`, value: pieceToPlay.value1, x: -1, y: 0, attachDirection: 180 },
-            { id: `end-right`, value: pieceToPlay.value2, x: 2, y: 0, attachDirection: 0 }
+            { id: `end-left`, value: pieceToPlay.value1, x: leftEndPos, y: 0, attachDirection: 180 },
+            { id: `end-right`, value: pieceToPlay.value2, x: rightEndPos, y: 0, attachDirection: 0 }
         ];
     } else {
         const validPlacements = initialGameState.activeEnds.filter(end =>
@@ -170,34 +165,37 @@ export function handlePlayPiece(initialGameState: GameState, userId: string, dat
             return { error: 'A ponta escolhida não é válida.' };
         }
 
-        if (pieceToPlay.value2 === targetEnd.value) {
+        const isRightEnd = targetEnd.attachDirection === 0;
+
+        if ((isRightEnd && pieceToPlay.value1 !== targetEnd.value) || (!isRightEnd && pieceToPlay.value2 !== targetEnd.value)) {
             [pieceToPlay.value1, pieceToPlay.value2] = [pieceToPlay.value2, pieceToPlay.value1];
         }
+        
+        const rotation = isDouble ? 90 : 0;
+        
+        // A largura da peça no tabuleiro depende se é bucha ou não
+        const widthOnBoard = isDouble ? pieceHeightUnits : pieceWidthUnits;
+        const pieceCenterOffset = widthOnBoard / 2;
 
-        const { x, y, attachDirection: rotation } = targetEnd;
-        const { x2, y2 } = getSecondCell(x, y, rotation);
+        const newPieceX = isRightEnd 
+            ? targetEnd.x + pieceCenterOffset 
+            : targetEnd.x - pieceCenterOffset;
+            
+        newPlacedPiece = { piece: pieceToPlay, x: newPieceX, y: 0, rotation: rotation as any };
+        
+        const newEndX = isRightEnd
+            ? newPieceX + pieceCenterOffset
+            : newPieceX - pieceCenterOffset;
 
-        if (initialGameState.occupiedCells[`${x},${y}`] || initialGameState.occupiedCells[`${x2},${y2}`]) {
-            return { error: 'Posição já ocupada.' };
-        }
-
-        newPlacedPiece = { piece: pieceToPlay, x, y, rotation };
-
-        nextOccupiedCells = {
-            ...initialGameState.occupiedCells,
-            [`${x},${y}`]: true,
-            [`${x2},${y2}`]: true,
+        const newEnd: BoardEnd = {
+            id: `end-${Date.now()}`,
+            value: isRightEnd ? pieceToPlay.value2 : pieceToPlay.value1,
+            x: newEndX,
+            y: 0,
+            attachDirection: targetEnd.attachDirection
         };
-        
-        const remainingEnds = initialGameState.activeEnds.filter(e => e.id !== targetEnd.id);
-        
-        const { x2: nextX, y2: nextY } = getSecondCell(x2, y2, rotation);
-        if(!initialGameState.occupiedCells[`${nextX},${nextY}`]){
-            const newEnd: BoardEnd = { id: `end-${Date.now()}`, value: pieceToPlay.value2, x: nextX, y: nextY, attachDirection: rotation };
-            nextActiveEnds = [...remainingEnds, newEnd];
-        } else {
-            nextActiveEnds = remainingEnds;
-        }
+
+        nextActiveEnds = [...initialGameState.activeEnds.filter(e => e.id !== targetEnd.id), newEnd];
     }
 
     const newHand = [...hand];
@@ -207,7 +205,7 @@ export function handlePlayPiece(initialGameState: GameState, userId: string, dat
         ...initialGameState,
         board: [...initialGameState.board, newPlacedPiece],
         activeEnds: nextActiveEnds,
-        occupiedCells: nextOccupiedCells,
+        occupiedCells: { ...initialGameState.occupiedCells, [`${Math.round(newPlacedPiece.x)},0`]: true },
         hands: {
             ...initialGameState.hands,
             [userId]: newHand
@@ -223,7 +221,7 @@ export function handlePlayPiece(initialGameState: GameState, userId: string, dat
         return { newState, events, terminal: { winner, reason: "O jogador bateu!" } };
     }
 
-    if (newState.activeEnds.length === 0) {
+    if (nextActiveEnds.length < 2) {
         const passResult = handlePassTurn(newState, userId, roomId, true);
         const combinedEvents = [...events, ...(passResult.events || [])];
         return { ...passResult, events: combinedEvents };
@@ -273,7 +271,6 @@ export async function startGame(roomId: string) {
         players.push({ id, username });
     }
 
-    // CORREÇÃO: Usa a constante INITIAL_HAND_SIZE para distribuir 7 peças.
     const dominoSet = shuffle(createDominoSet());
     const hands = Object.fromEntries(players.map(p => [p.id, dominoSet.splice(0, INITIAL_HAND_SIZE)]));
 
