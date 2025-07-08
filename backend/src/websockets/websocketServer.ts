@@ -15,7 +15,7 @@ import {
 } from './gameHandler';
 import { handleGameMessage } from './messageHandler';
 import { AuthenticatedWebSocket, DecodedToken, GameState } from '../types';
-import { PLAYERS_TO_START_GAME, DISCONNECT_TIMEOUT } from '../config/gameConfig';
+import { MAX_PLAYERS } from '../config/gameConfig';
 import { JWT_SECRET, SERVER_ID } from '../config/environment';
 import { memoryStore, Room } from './memoryStore';
 import { broadcastToRoom, sendToPlayer, sendError } from './gameUtils';
@@ -108,13 +108,13 @@ export function initWebSocketServer(server: http.Server) {
                     type: 'ROOM_STATE',
                     myId: clientInRoom.user.userId,
                     hostId: room.hostId,
-                    // MODIFICADO: Mapeia os IDs para objetos com o nome de utilizador real
                     players: Array.from(room.players).map(id => {
                         const playerWs = clientsByUserId.get(id);
                         const username = playerWs?.user?.username || `User-${id}`;
                         return { id, username };
                     }),
                     playerCount: room.playerCount,
+                    maxPlayers: MAX_PLAYERS,
                     status: room.status
                 };
             });
@@ -148,25 +148,24 @@ export function initWebSocketServer(server: http.Server) {
              if (currentGameState && currentGameState.players.find(p => p.id === userId)) {
                  const result = handleLeaveGame(ws, currentGameState, userId, false);
                  await processGameLogicResult(result, roomId, currentGameState);
-             } else if (room && room.playerCount > 0) { // MODIFICADO: Apenas envia se ainda houver gente na sala
+             } else if (room && room.playerCount > 0) { 
                  broadcastToRoom(roomId, (clientInRoom) => {
                     return {
                         type: 'ROOM_STATE',
                         myId: clientInRoom.user.userId,
                         hostId: room.hostId,
-                        // MODIFICADO: Usa a mesma lógica para obter nomes de utilizador
                         players: Array.from(room.players).map(id => {
                             const playerWs = clientsByUserId.get(id);
                             const username = playerWs?.user?.username || `User-${id}`;
                             return { id, username };
                         }),
                         playerCount: room.playerCount,
+                        maxPlayers: MAX_PLAYERS,
                         status: room.status
                     };
                  });
                  console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} desconectou-se do LOBBY da sala ${roomId}. Estado atualizado enviado.`);
              } else if (room && room.playerCount === 0) {
-                 // Se a sala ficar vazia, remove-a.
                  memoryStore.deleteRoom(roomId);
                  console.log(`[${SERVER_ID}] Sala do lobby ${roomId} ficou vazia e foi removida.`);
              }

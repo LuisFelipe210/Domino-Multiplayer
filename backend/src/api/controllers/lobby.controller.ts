@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
-import { PLAYERS_TO_START_GAME } from '../../config/gameConfig';
+import { MAX_PLAYERS } from '../../config/gameConfig';
 import { memoryStore, Room } from '../../websockets/memoryStore';
 
 export const listRooms = async (req: Request, res: Response) => {
@@ -11,7 +11,7 @@ export const listRooms = async (req: Request, res: Response) => {
             .map(room => ({
                 name: room.name,
                 playerCount: room.playerCount,
-                maxPlayers: PLAYERS_TO_START_GAME,
+                maxPlayers: MAX_PLAYERS,
                 hasPassword: room.hasPassword,
             }));
         res.json({ rooms: publicRooms });
@@ -48,7 +48,7 @@ export const joinRoom = async (req: Request, res: Response) => {
             memoryStore.saveRoom(roomName, newRoom);
             room = newRoom;
         } else {
-            if (room.status !== 'playing' && room.playerCount >= PLAYERS_TO_START_GAME) {
+            if (room.status !== 'playing' && room.playerCount >= MAX_PLAYERS) {
                 return res.status(403).json({ message: 'A sala está cheia.' });
             }
             if (room.passwordHash) {

@@ -114,7 +114,7 @@ export const ui = {
     
     renderLobbyState() {
         const { roomState } = state;
-        this.gameStatusDiv.textContent = `A aguardar jogadores... ${roomState.playerCount} de 4`;
+        this.gameStatusDiv.textContent = `A aguardar jogadores... ${roomState.playerCount} de ${roomState.maxPlayers || 4}`;
         
         if (roomState.hostId === state.myId && roomState.status === 'waiting') {
             this.startGameBtn.style.display = 'block';

@@ -1,6 +1,6 @@
 import { pool } from '../config/database';
 import { GameState, Domino, Player, PlacedDomino, BoardEnd, GameLogicResult, GameEvent, AuthenticatedWebSocket, PlayPieceMessage } from '../types';
-import { PLAYERS_TO_START_GAME, INITIAL_HAND_SIZE, TURN_DURATION } from '../config/gameConfig';
+import { MIN_PLAYERS_TO_START, INITIAL_HAND_SIZE, TURN_DURATION } from '../config/gameConfig';
 import { sendToPlayer, broadcastToRoom, broadcastToLobby, sendError } from './gameUtils';
 import { SERVER_ID } from '../config/environment';
 import { memoryStore } from './memoryStore';
@@ -284,8 +284,8 @@ export function handleStartGame(userId: string, roomId: string): GameLogicResult
     if (room.status === 'playing') {
         return { error: "O jogo já começou." };
     }
-    if (room.playerCount < 2) {
-        return { error: "São necessários pelo menos 2 jogadores para iniciar." };
+    if (room.playerCount < MIN_PLAYERS_TO_START) {
+        return { error: `São necessários pelo menos ${MIN_PLAYERS_TO_START} jogadores para iniciar.` };
     }
 
     startGame(roomId);
