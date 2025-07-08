@@ -39,7 +39,9 @@ const elements = {
 
 function createDominoElement(piece, isHand) {
     const dominoEl = document.createElement('div');
-    dominoEl.className = 'domino' + (isHand ? ' domino-hand' : ' domino-board');
+    // Para a mão do jogador, queremos sempre que a peça seja vertical para economizar espaço
+    const className = 'domino' + (isHand ? ' domino-hand' : ' domino-board');
+    dominoEl.className = className;
     dominoEl.dataset.value = `${piece.value1}-${piece.value2}`;
 
     const createHalf = (value) => {
@@ -59,6 +61,11 @@ function createDominoElement(piece, isHand) {
     dominoEl.appendChild(createHalf(piece.value1));
     dominoEl.appendChild(divider);
     dominoEl.appendChild(createHalf(piece.value2));
+
+    // Se a peça está na mão, a rotacionamos para a vertical
+    if (isHand) {
+        dominoEl.style.transform = 'rotate(90deg)';
+    }
 
     return dominoEl;
 }
@@ -201,14 +208,20 @@ export const ui = {
         const boardRect = this.gameBoard.getBoundingClientRect();
         const centerX = boardRect.width / 2;
         const centerY = boardRect.height / 2;
-        const spacing = 22; 
+        // MODIFICADO: A unidade de coordenada do backend é 1/2 peça, que agora tem 36px.
+        const spacing = 36;
         
         (gameState.board || []).forEach(placedDomino => {
             const dominoEl = createDominoElement(placedDomino.piece, false);
+            
             const xPos = centerX + placedDomino.x * spacing;
             const yPos = centerY + placedDomino.y * spacing;
-            dominoEl.style.transform = `translate(${xPos}px, ${yPos}px) rotate(${placedDomino.rotation}deg)`;
-            dominoEl.style.transformOrigin = 'top left';
+            
+            dominoEl.style.left = `${xPos}px`;
+            dominoEl.style.top = `${yPos}px`;
+            dominoEl.style.transform = `translate(-50%, -50%) rotate(${placedDomino.rotation}deg)`;
+            dominoEl.style.transformOrigin = 'center center';
+            
             this.gameBoard.appendChild(dominoEl);
         });
 
@@ -225,8 +238,8 @@ export const ui = {
                     endEl.onclick = () => {
                         ws.sendMessage({ type: 'PLAY_PIECE', piece: pieceToPlayWithOptions.piece, endId: end.id });
                         state.pieceToPlayWithOptions = null;
-                        clearBoard(); // Limpa os destaques
-                        this.renderGameState(); // Re-renderiza imediatamente
+                        clearBoard();
+                        this.renderGameState();
                     };
                     this.gameBoard.appendChild(endEl);
                 }

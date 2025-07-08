@@ -158,48 +158,60 @@ input[type="text"]:focus, input[type="password"]:focus {
 #player-hand-container { margin-top: 15px; }
 #player-hand {
     display: flex; flex-wrap: wrap; justify-content: center;
-    gap: 30px; margin-top: 10px; padding: 20px 10px;
-    background: rgba(0,0,0,0.05); border-radius: 8px; min-height: 180px;
+    gap: 15px; margin-top: 10px; padding: 20px 10px;
+    background: rgba(0,0,0,0.05); border-radius: 8px; min-height: 100px;
 }
 #game-controls { margin-top: 20px; display: flex; gap: 10px; justify-content: center; }
 #game-controls .btn { width: auto; padding: 10px 30px; }
 
 
 /* --- ESTILOS DAS PEÇAS DE DOMINÓ (3D Style) --- */
+/* MODIFICADO: Peça padrão agora é horizontal */
 .domino {
-    width: 80px;
-    height: 160px;
+    width: 72px; /* Largura é o dobro da altura */
+    height: 36px;
     background-color: #f1f1f1;
-    border-radius: 10px;
+    border-radius: 5px;
     display: flex;
-    flex-direction: column;
+    flex-direction: row; /* Metades ficam lado a lado */
     justify-content: space-around;
     align-items: center;
-    padding: 8px;
+    padding: 4px;
     user-select: none;
-    box-shadow: 1px 1px 0px #ccc, 2px 2px 0px #ccc, 3px 3px 0px #ccc, 4px 4px 0px #ccc, 5px 5px 0px #ccc, 6px 6px 0px #ccc, 7px 7px 12px rgba(0, 0, 0, 0.4);
+    box-shadow: 1px 1px 0px #ccc, 2px 2px 0px #ccc, 3px 3px 6px rgba(0, 0, 0, 0.3);
     transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
 }
-.domino-hand { cursor: pointer; position: relative; } /* Posição relativa para o hover funcionar bem */
-.domino-board { position: absolute; } /* Peças no tabuleiro são posicionadas absolutamente */
+.domino-hand { cursor: pointer; position: relative; }
+.domino-board { position: absolute; }
 
 .domino-hand:hover {
-    transform: translateY(-12px);
-    box-shadow: 1px 1px 0px #ccc, 2px 2px 0px #ccc, 3px 3px 0px #ccc, 4px 4px 0px #ccc, 5px 5px 0px #ccc, 6px 6px 0px #ccc, 18px 18px 25px rgba(0, 0, 0, 0.3);
+    transform: translateY(-8px);
+    box-shadow: 1px 1px 0px #ccc, 2px 2px 0px #ccc, 9px 9px 15px rgba(0, 0, 0, 0.25);
 }
 
-.divider { width: 85%; height: 4px; background-color: #333; border-radius: 5px; }
+/* MODIFICADO: Divisor agora é vertical */
+.divider { 
+    width: 2px; 
+    height: 85%; 
+    background-color: #333; 
+    border-radius: 5px; 
+}
+
+/* MODIFICADO: Metades agora são 45% da largura total */
 .half {
-    width: 100%; height: 45%; display: grid;
+    width: 45%; 
+    height: 100%; 
+    display: grid;
     grid-template-columns: repeat(3, 1fr);
     grid-template-rows: repeat(3, 1fr);
     place-items: center;
 }
 .dot {
-    width: 14px; height: 14px; background-color: #2c3e50;
-    border-radius: 50%; box-shadow: inset 1px 1px 3px rgba(0,0,0,0.6);
+    width: 6px; height: 6px; background-color: #2c3e50;
+    border-radius: 50%; box-shadow: inset 1px 1px 2px rgba(0,0,0,0.5);
 }
 
+/* Lógica de pontos permanece a mesma */
 .dots-1 .dot:nth-child(1) { grid-area: 2 / 2; }
 .dots-2 .dot:nth-child(1) { grid-area: 1 / 1; } .dots-2 .dot:nth-child(2) { grid-area: 3 / 3; }
 .dots-3 .dot:nth-child(1) { grid-area: 1 / 1; } .dots-3 .dot:nth-child(2) { grid-area: 2 / 2; } .dots-3 .dot:nth-child(3) { grid-area: 3 / 3; }

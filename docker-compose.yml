@@ -14,6 +14,12 @@ services:
     restart: unless-stopped
     ports:
       - "5432:5432"
+    # NOVO: Adiciona uma verificação de saúde para o PostgreSQL
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
 
   backend:
     build:
@@ -28,8 +34,10 @@ services:
       - JWT_SECRET=${JWT_SECRET}
     volumes:
       - ./frontend:/usr/src/app/frontend 
+    # MODIFICADO: Altera a dependência para aguardar o estado 'healthy'
     depends_on:
-      - postgres
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
 volumes:
