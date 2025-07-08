@@ -1,0 +1,236 @@
+import { state } from './state.js';
+import { api } from './api.js';
+import { ws } from './websocket.js';
+
+// --- Elementos do DOM ---
+const elements = {
+    views: {
+        auth: document.getElementById('auth-view'),
+        lobby: document.getElementById('lobby-view'),
+        game: document.getElementById('game-view'),
+    },
+    // Auth
+    loginForm: document.getElementById('login-form'),
+    registerForm: document.getElementById('register-form'),
+    loginSection: document.getElementById('login-section'),
+    registerSection: document.getElementById('register-section'),
+    showRegisterLink: document.getElementById('show-register-link'),
+    showLoginLink: document.getElementById('show-login-link'),
+    logoutBtn: document.getElementById('logout-btn'),
+    // Lobby
+    joinRoomForm: document.getElementById('join-room-form'),
+    roomsList: document.getElementById('rooms-list'),
+    refreshRoomsBtn: document.getElementById('refresh-rooms-btn'),
+    // Game
+    gameBoard: document.getElementById('game-board'),
+    playerHandDiv: document.getElementById('player-hand'),
+    gameStatusDiv: document.getElementById('game-status'),
+    turnTimerDiv: document.getElementById('turn-timer'),
+    playersInfoDiv: document.getElementById('players-info'),
+    passTurnBtn: document.getElementById('pass-turn-btn'),
+    leaveGameBtn: document.getElementById('leave-game-btn'),
+    startGameBtn: document.getElementById('start-game-btn'),
+    playerHandContainer: document.getElementById('player-hand-container'),
+    // Modal
+    alertModal: document.getElementById('alert-modal'),
+    alertMessage: document.getElementById('alert-message'),
+    alertCloseBtn: document.getElementById('alert-close-btn'),
+};
+
+function createDominoElement(piece, isHand) {
+    const dominoEl = document.createElement('div');
+    dominoEl.className = 'domino' + (isHand ? ' domino-hand' : ' domino-board');
+    dominoEl.dataset.value = `${piece.value1}-${piece.value2}`;
+
+    const createHalf = (value) => {
+        const half = document.createElement('div');
+        half.className = `half dots-${value}`;
+        for (let i = 0; i < value; i++) {
+            const dot = document.createElement('span');
+            dot.className = 'dot';
+            half.appendChild(dot);
+        }
+        return half;
+    };
+
+    const divider = document.createElement('div');
+    divider.className = 'divider';
+
+    dominoEl.appendChild(createHalf(piece.value1));
+    dominoEl.appendChild(divider);
+    dominoEl.appendChild(createHalf(piece.value2));
+
+    return dominoEl;
+}
+
+function clearBoard() {
+    while (elements.gameBoard.firstChild) {
+        elements.gameBoard.removeChild(elements.gameBoard.firstChild);
+    }
+}
+
+export const ui = {
+    ...elements, // Expõe todos os elementos para o main.js
+
+    showView(viewName) {
+        const isLoggedIn = !!document.cookie.split('; ').find(row => row.startsWith('token='));
+        Object.values(this.views).forEach(v => v.classList.remove('active'));
+        if (this.views[viewName]) {
+            this.views[viewName].classList.add('active');
+        }
+        this.logoutBtn.style.display = isLoggedIn && viewName !== 'auth' ? 'block' : 'none';
+    },
+
+    showAlert(message) {
+        this.alertMessage.textContent = message;
+        this.alertModal.style.display = 'flex';
+    },
+
+    async renderRoomsList() {
+        try {
+            const data = await api.listRooms();
+            this.roomsList.innerHTML = ''; // Limpa a lista
+            if (data.rooms.length === 0) {
+                this.roomsList.innerHTML = '<li>Nenhuma sala disponível. Crie uma!</li>';
+                return;
+            }
+            data.rooms.forEach(room => {
+                const li = document.createElement('li');
+                li.textContent = `${room.name} (${room.playerCount}/${room.maxPlayers}) ${room.hasPassword ? '🔒' : ''}`;
+                this.roomsList.appendChild(li);
+            });
+        } catch (err) {
+            this.showAlert(err.message);
+            this.showView('auth'); // Provavelmente sessão expirou
+        }
+    },
+    
+    renderLobbyState() {
+        const { roomState } = state;
+        this.gameStatusDiv.textContent = `A aguardar jogadores... ${roomState.playerCount} de 4`;
+        
+        if (roomState.hostId === state.myId && roomState.status === 'waiting') {
+            this.startGameBtn.style.display = 'block';
+            this.startGameBtn.disabled = roomState.playerCount < 2;
+        } else {
+            this.startGameBtn.style.display = 'none';
+        }
+
+        clearBoard();
+        this.playerHandContainer.style.display = 'none';
+        this.passTurnBtn.style.display = 'none';
+        this.turnTimerDiv.style.display = 'none';
+        
+        this.playersInfoDiv.innerHTML = '';
+        (roomState.players || []).forEach(p => {
+            const playerDiv = document.createElement('div');
+            playerDiv.className = 'player-info';
+            playerDiv.textContent = `${p.username || `User ${p.id}`} ${p.id === roomState.hostId ? '⭐' : ''}`;
+            this.playersInfoDiv.appendChild(playerDiv);
+        });
+    },
+
+    renderGameState() {
+        const { gameState, myId, myHand, pieceToPlayWithOptions } = state;
+
+        if (!gameState || !gameState.players) {
+            this.renderLobbyState();
+            return;
+        }
+
+        this.startGameBtn.style.display = 'none';
+
+        // --- Status e Controles ---
+        if (gameState.isSpectator) {
+            this.gameStatusDiv.textContent = 'Modo Espectador';
+            this.playerHandContainer.style.display = 'none';
+            this.passTurnBtn.style.display = 'none';
+        } else {
+            const currentPlayer = gameState.players.find(p => p.id === gameState.turn);
+            this.gameStatusDiv.textContent = gameState.turn === myId ? "É a sua vez!" : `Aguardando a vez de ${currentPlayer?.username || '...'}`;
+            this.playerHandContainer.style.display = 'block';
+            this.passTurnBtn.style.display = 'inline-block';
+            this.passTurnBtn.disabled = gameState.turn !== myId;
+        }
+
+        // --- Timer ---
+        clearInterval(state.turnTimerInterval);
+        if (gameState.turn === myId && !gameState.isSpectator) {
+            this.turnTimerDiv.style.display = 'block';
+            let timeLeft = 30;
+            const updateTimerDisplay = () => {
+                this.turnTimerDiv.textContent = `Tempo Restante: ${timeLeft}s`;
+                this.turnTimerDiv.style.color = timeLeft <= 10 ? '#c0392b' : '#2c3e50';
+            };
+            updateTimerDisplay();
+            state.turnTimerInterval = setInterval(() => {
+                timeLeft--;
+                updateTimerDisplay();
+                if (timeLeft <= 0) clearInterval(state.turnTimerInterval);
+            }, 1000);
+        } else {
+            this.turnTimerDiv.style.display = 'none';
+        }
+
+        // --- Info dos Jogadores ---
+        this.playersInfoDiv.innerHTML = '';
+        (gameState.players || []).forEach(p => {
+            const playerDiv = document.createElement('div');
+            playerDiv.className = 'player-info';
+            if (gameState.turn === p.id) playerDiv.classList.add('current-turn');
+            if (p.disconnectedSince) playerDiv.classList.add('disconnected');
+            
+            const pieceCount = gameState.playerPieceCounts ? gameState.playerPieceCounts[p.id] : 0;
+            playerDiv.textContent = `${p.username || `User ${p.id}`}: ${pieceCount} peças ${p.disconnectedSince ? "(desconectado)" : ""}`;
+            this.playersInfoDiv.appendChild(playerDiv);
+        });
+        
+        // --- Mão do Jogador ---
+        this.playerHandDiv.innerHTML = '';
+        (myHand || []).forEach(piece => {
+            const dominoEl = createDominoElement(piece, true);
+            dominoEl.onclick = () => {
+                if (gameState.isSpectator || gameState.turn !== myId || pieceToPlayWithOptions) return;
+                ws.sendMessage({ type: 'PLAY_PIECE', piece });
+            };
+            this.playerHandDiv.appendChild(dominoEl);
+        });
+        
+        // --- Tabuleiro ---
+        clearBoard();
+        const boardRect = this.gameBoard.getBoundingClientRect();
+        const centerX = boardRect.width / 2;
+        const centerY = boardRect.height / 2;
+        const spacing = 22; 
+        
+        (gameState.board || []).forEach(placedDomino => {
+            const dominoEl = createDominoElement(placedDomino.piece, false);
+            const xPos = centerX + placedDomino.x * spacing;
+            const yPos = centerY + placedDomino.y * spacing;
+            dominoEl.style.transform = `translate(${xPos}px, ${yPos}px) rotate(${placedDomino.rotation}deg)`;
+            dominoEl.style.transformOrigin = 'top left';
+            this.gameBoard.appendChild(dominoEl);
+        });
+
+        // --- Destaque de Pontas Jogáveis ---
+        if(pieceToPlayWithOptions) {
+             (gameState.activeEnds || []).forEach(end => {
+                if (pieceToPlayWithOptions.options.some(opt => opt.endId === end.id)) {
+                    const endEl = document.createElement('div');
+                    endEl.className = 'playable-end-highlight';
+                    const xPos = centerX + end.x * spacing;
+                    const yPos = centerY + end.y * spacing;
+                    endEl.style.left = `${xPos}px`;
+                    endEl.style.top = `${yPos}px`;
+                    endEl.onclick = () => {
+                        ws.sendMessage({ type: 'PLAY_PIECE', piece: pieceToPlayWithOptions.piece, endId: end.id });
+                        state.pieceToPlayWithOptions = null;
+                        clearBoard(); // Limpa os destaques
+                        this.renderGameState(); // Re-renderiza imediatamente
+                    };
+                    this.gameBoard.appendChild(endEl);
+                }
+             });
+        }
+    }
+};

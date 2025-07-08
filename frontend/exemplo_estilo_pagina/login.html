@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Login - Dominó Multiplayer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Patrick+Hand&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="./style.css">
+</head>
+<body>
+    <div class="container">
+        <div class="logo-header">
+            <h1>DOMINÓ <span class="domino-icon"></span> ONLINE</h1>
+            <p>Entre e comece a jogar agora!</p>
+        </div>
+
+        <div class="form-header">
+            <h2>Entrar na Conta</h2>
+        </div>
+
+        <form id="login-form">
+            <div class="input-group">
+                <label for="login-username">Nome de Usuário</label>
+                <input type="text" id="login-username" required autocomplete="username" placeholder="Seu usuário">
+            </div>
+            
+            <div class="input-group">
+                <label for="login-password">Senha</label>
+                <div class="password-container">
+                    <input type="password" id="login-password" required autocomplete="current-password" placeholder="Sua senha">
+                    <button type="button" class="toggle-password" id="toggle-password">Mostrar</button>
+                </div>
+            </div>
+            
+            <button type="submit" class="btn">Entrar</button>
+            <p id="message" class="message"></p>
+        </form>
+
+        <div class="form-link">
+            Não tem uma conta? <a href="/register.html">Crie uma agora</a>
+        </div>
+    </div>
+
+    <script src="/js/login.js" type="module"></script>
+</body>
+</html>
