@@ -1,7 +1,6 @@
-// backend/src/config/database.ts
 import pg from 'pg';
+import { DATABASE_URL } from './environment';
 
-// Usar uma exportação nomeada em vez de default
 export const pool = new pg.Pool({
-    connectionString: process.env.DATABASE_URL,
+    connectionString: DATABASE_URL,
 });

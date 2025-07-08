@@ -1,106 +1,188 @@
-// backend/src/websockets/websocketServer.ts
 import { WebSocketServer, WebSocket } from 'ws';
 import http from 'http';
 import url from 'url';
 import jwt from 'jsonwebtoken';
-import { redisClient, subscriber } from '../config/redis';
-import { handleGameMessage, startGame } from './gameHandler';
+import cookie from 'cookie';
+import { 
+    startGame, 
+    getGameState, 
+    saveGameState, 
+    getNextTurn, 
+    handleLeaveGame,
+    getPublicState,
+    changeTurn,
+    processGameLogicResult
+} from './gameHandler';
+import { handleGameMessage } from './messageHandler';
+import { AuthenticatedWebSocket, DecodedToken, GameState } from '../types';
+import { PLAYERS_TO_START_GAME, DISCONNECT_TIMEOUT } from '../config/gameConfig';
+import { JWT_SECRET, SERVER_ID } from '../config/environment';
+import { memoryStore, Room } from './memoryStore';
+import { broadcastToRoom, sendToPlayer, sendError } from './gameUtils';
+import { setWss } from './serverInstance';
 
-const JWT_SECRET = process.env.JWT_SECRET || 'super-secret';
-const SERVER_ID = process.env.SERVER_ID || 'default-server';
-const PLAYERS_TO_START_GAME = 2;
+export const clientsByUserId = new Map<string, AuthenticatedWebSocket>();
+export const roomsByClientId = new Map<AuthenticatedWebSocket, string>();
 
-const wss = new WebSocketServer({ noServer: true });
-
-// Mapas para gerir clientes e salas NESTA instância de servidor
-const clientsByUserId = new Map<string, WebSocket>();
-const activeRooms = new Map<string, Set<WebSocket>>();
+const clearDisconnectTimer = (gameState: GameState, userId: string) => {
+    if (gameState.disconnectTimers && gameState.disconnectTimers[userId]) {
+        clearTimeout(gameState.disconnectTimers[userId]);
+        delete gameState.disconnectTimers[userId];
+    }
+};
 
 export function initWebSocketServer(server: http.Server) {
-    // Iniciar o listener de Pub/Sub para receber eventos de jogo
-    subscriber.subscribe('game-events', (message) => {
-        try {
-            const { roomId, targetUserId, payload } = JSON.parse(message);
+    const wss = new WebSocketServer({ noServer: true });
+    setWss(wss);
+
+    const heartbeatInterval = setInterval(function ping() {
+        wss.clients.forEach(function each(ws) {
+            const extWs = ws as AuthenticatedWebSocket & { isAlive: boolean };
+            if (extWs.isAlive === false) return ws.terminate();
+
+            extWs.isAlive = false;
+            ws.ping();
+        });
+    }, 30000);
+
+    wss.on('connection', async (ws: AuthenticatedWebSocket, request, user, pathname) => {
+        const extWs = ws as AuthenticatedWebSocket & { isAlive: boolean };
+        extWs.isAlive = true;
+        extWs.on('pong', () => {
+            extWs.isAlive = true;
+        });
+        
+        ws.user = user;
+        const userId = String(user.userId);
+        const roomId = pathname.split('/').pop()!;
+        
+        clientsByUserId.set(userId, ws); 
+        roomsByClientId.set(ws, roomId);
+        memoryStore.setUserRoom(userId, roomId);
+        
+        console.log(`[${SERVER_ID}] Utilizador ID ${userId} conectou-se. Sala: ${roomId}. Clientes nesta instância: ${clientsByUserId.size}`);
+
+        const gameState = await getGameState(roomId);
+        if (gameState) {
+            const playerInGame = gameState.players.find(p => p.id === userId);
             
-            if (targetUserId) { // Mensagem para um utilizador específico
-                const client = clientsByUserId.get(String(targetUserId));
-                if (client && client.readyState === WebSocket.OPEN) {
-                    client.send(JSON.stringify(payload));
+            if (playerInGame) { // Jogador está a reconectar
+                if (playerInGame.disconnectedSince) {
+                    console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} reconectou-se ao JOGO ${roomId}.`);
+                    delete playerInGame.disconnectedSince;
+                    clearDisconnectTimer(gameState, userId);
+                    await saveGameState(roomId, gameState);
                 }
-            } else if (roomId) { // Mensagem para uma sala inteira
-                const room = activeRooms.get(roomId);
-                room?.forEach(client => {
-                    if (client.readyState === WebSocket.OPEN) {
-                        client.send(JSON.stringify(payload));
-                    }
+                
+                sendToPlayer(userId, {
+                    type: 'ESTADO_ATUALIZADO',
+                    myId: userId,
+                    ...getPublicState(gameState),
+                    yourHand: gameState.hands[userId],
+                });
+                return;
+            } else { // NOVO: Jogador entra como OBSERVADOR
+                console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} entrou como OBSERVADOR na sala ${roomId}.`);
+                sendToPlayer(userId, {
+                    type: 'ESTADO_ATUALIZADO',
+                    myId: userId,
+                    ...getPublicState(gameState),
+                    yourHand: [], // Observadores não têm mão
+                    isSpectator: true,
                 });
             }
-        } catch (error) {
-            console.error('Erro ao processar mensagem do Pub/Sub:', error);
-        }
-    });
+        } else {
+            let room = memoryStore.getRoom(roomId);
+            if (!room) {
+                return sendError(ws, `A sala ${roomId} não foi encontrada ou foi fechada.`);
+            }
 
-    wss.on('connection', async (ws: WebSocket, request, user, pathname) => {
-        (ws as any).user = user;
-        clientsByUserId.set(String(user.userId), ws); 
-        
-        const roomId = pathname.split('/').pop()!;
-        if (!activeRooms.has(roomId)) {
-            activeRooms.set(roomId, new Set());
-        }
-        activeRooms.get(roomId)!.add(ws);
-        
-        // Adiciona o jogador à sala no Redis e verifica se o jogo deve começar
-        await redisClient.sAdd(`room:players:${roomId}`, String(user.userId));
-        const playerCount = await redisClient.sCard(`room:players:${roomId}`);
-        
-        console.log(`[${SERVER_ID}] Utilizador ${user.username} conectou-se à sala de jogo ${roomId}. Jogadores: ${playerCount}`);
-        
-        if (playerCount === PLAYERS_TO_START_GAME) {
-            await redisClient.hSet(`room:${roomId}`, 'status', 'playing');
-            await startGame(roomId);
-        }
+            room.players.add(userId);
+            room.playerCount = room.players.size;
+            memoryStore.saveRoom(roomId, room);
 
-        ws.on('message', (message) => {
-            let data;
-            try { data = JSON.parse(message.toString()); } catch (e) { return; }
+            console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} entrou no LOBBY da sala ${roomId}. Jogadores na sala: ${room.playerCount}`);
             
-            // Todas as mensagens aqui são de jogo, então chamamos diretamente o gameHandler
-            handleGameMessage(ws, data, roomId);
+            broadcastToRoom(roomId, (clientInRoom) => {
+                return {
+                    type: 'ROOM_STATE',
+                    myId: clientInRoom.user.userId,
+                    hostId: room.hostId,
+                    players: Array.from(room.players).map(id => ({id, username: `User-${id}`})),
+                    playerCount: room.playerCount,
+                    status: room.status
+                };
+            });
+        }
+        
+        ws.on('message', async (message) => {
+            const currentGameState = await getGameState(roomId);
+            if (currentGameState) {
+                const isPlayer = currentGameState.players.some(p => p.id === userId);
+                if (!isPlayer) {
+                    return sendError(ws, "Observadores não podem realizar ações.");
+                }
+            }
+            handleGameMessage(ws, message, roomId);
         });
 
         ws.on('close', async () => {
-             clientsByUserId.delete(String(user.userId));
-             const room = activeRooms.get(roomId);
+             clientsByUserId.delete(userId);
+             roomsByClientId.delete(ws);
+             
+             const room = memoryStore.getRoom(roomId);
              if (room) {
-                 room.delete(ws);
-                 await redisClient.sRem(`room:players:${roomId}`, String(user.userId));
-                 if (room.size === 0) {
-                     activeRooms.delete(roomId);
-                     // Lógica adicional de limpeza, se necessário
-                 }
+                 room.players.delete(userId);
+                 room.playerCount = room.players.size;
+                 memoryStore.saveRoom(roomId, room);
+             }
+             
+             console.log(`[${SERVER_ID}] Utilizador ID ${userId} desconectou-se. Clientes nesta instância: ${clientsByUserId.size}`);
+             
+             const currentGameState = await getGameState(roomId);
+             if (currentGameState && currentGameState.players.find(p => p.id === userId)) {
+                 const result = handleLeaveGame(ws, currentGameState, userId, false);
+                 await processGameLogicResult(result, roomId, currentGameState);
+             } else if (room) {
+                 broadcastToRoom(roomId, {
+                    type: 'ROOM_STATE',
+                    hostId: room.hostId,
+                    players: Array.from(room.players).map(id => ({id, username: `User-${id}`})),
+                    playerCount: room.playerCount,
+                    status: room.status
+                 });
+                 console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} desconectou-se do LOBBY da sala ${roomId}.`);
              }
         });
     });
 
     server.on('upgrade', (request, socket, head) => {
-        const { pathname, query } = url.parse(request.url!, true);
-        const token = query.token as string;
-
-        // O upgrade agora só acontece para as rotas de JOGO
+        const { pathname } = url.parse(request.url!, true);
+        
         if (pathname?.startsWith('/ws/game/')) {
-            if (!token) { socket.destroy(); return; }
+            const cookies = cookie.parse(request.headers.cookie || '');
+            const token = cookies.token;
+
+            if (!token) {
+                socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
+                socket.destroy();
+                return;
+            }
             try {
-                const decoded = jwt.verify(token, JWT_SECRET);
+                const decoded = jwt.verify(token, JWT_SECRET) as DecodedToken;
                 wss.handleUpgrade(request, socket, head, (ws) => {
                     wss.emit('connection', ws, request, decoded, pathname);
                 });
             } catch (err) {
+                socket.write('HTTP/1.1 401 Unauthorized\r\n\r\n');
                 socket.destroy();
             }
         } else {
-            // Recusa qualquer outra tentativa de upgrade que não seja para uma sala de jogo
             socket.destroy();
         }
+    });
+
+    wss.on('close', function close() {
+        clearInterval(heartbeatInterval);
     });
 }

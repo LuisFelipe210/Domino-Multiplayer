@@ -1,23 +1,35 @@
-// backend/src/app.ts
 import express from 'express';
 import http from 'http';
+import cookieParser from 'cookie-parser';
+import path from 'path';
+
 import authRoutes from './api/routes/auth.routes';
-import lobbyRoutes from './api/routes/lobby.routes'; // Importar as novas rotas de lobby
+import lobbyRoutes from './api/routes/lobby.routes';
 import { initWebSocketServer } from './websockets/websocketServer';
 
 const app = express();
 
 // Middlewares
 app.use(express.json());
+app.use(cookieParser());
+
+const frontendPath = path.join(__dirname, '../frontend');
+app.use(express.static(frontendPath));
 
 // Rotas da API
 app.use('/api/auth', authRoutes);
-app.use('/api/lobby', lobbyRoutes); // Usar as novas rotas de lobby
+app.use('/api/lobby', lobbyRoutes);
 
-// Criar servidor HTTP a partir da aplicação Express
+// Rota de fallback para servir o index.html
+app.get('*', (req, res, next) => {
+    if (req.originalUrl.startsWith('/api')) {
+        return next();
+    }
+    res.sendFile(path.join(frontendPath, 'index.html'));
+});
+
 const server = http.createServer(app);
 
-// Iniciar o servidor WebSocket e anexá-lo ao servidor HTTP
 initWebSocketServer(server);
 
 export default server;
