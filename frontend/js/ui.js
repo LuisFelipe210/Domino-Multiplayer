@@ -153,11 +153,35 @@ export const ui = {
             this.playerHandContainer.style.display = 'none';
             this.passTurnBtn.style.display = 'none';
         } else {
+            const isMyTurn = gameState.turn === myId;
             const currentPlayer = gameState.players.find(p => p.id === gameState.turn);
-            this.gameStatusDiv.textContent = gameState.turn === myId ? "É a sua vez!" : `Aguardando a vez de ${currentPlayer?.username || '...'}`;
+            this.gameStatusDiv.textContent = isMyTurn ? "É a sua vez!" : `Aguardando a vez de ${currentPlayer?.username || '...'}`;
             this.playerHandContainer.style.display = 'block';
             this.passTurnBtn.style.display = 'inline-block';
-            this.passTurnBtn.disabled = gameState.turn !== myId;
+
+            if (!isMyTurn) {
+                this.passTurnBtn.disabled = true;
+            } else {
+                // É a minha vez, vamos verificar se tenho jogadas válidas.
+                const hasPlayablePiece = (() => {
+                    // Se não tiver mão, não pode jogar.
+                    if (!myHand || myHand.length === 0) return false;
+                    // Se o tabuleiro estiver vazio, qualquer peça é jogável.
+                    if (gameState.board.length === 0) return true;
+                    // Se não houver pontas ativas (jogo bloqueado), não pode jogar.
+                    if (!gameState.activeEnds || gameState.activeEnds.length === 0) return false;
+                    
+                    // Verifica se alguma peça na mão corresponde a alguma ponta ativa.
+                    return myHand.some(piece => 
+                        gameState.activeEnds.some(end => 
+                            piece.value1 === end.value || piece.value2 === end.value
+                        )
+                    );
+                })();
+
+                // Desativa o botão de passar se houver uma peça jogável.
+                this.passTurnBtn.disabled = hasPlayablePiece;
+            }
         }
 
         // --- Timer ---

@@ -22,13 +22,52 @@ export const startTurnTimer = (roomId: string, gameState: GameState) => {
     if (!currentPlayerId) return;
 
     const timerId = setTimeout(async () => {
-        console.log(`[${SERVER_ID}] Tempo esgotado para o jogador ${currentPlayerId} na sala ${roomId}. Passando a vez.`);
+        console.log(`[${SERVER_ID}] Tempo esgotado para o jogador ${currentPlayerId} na sala ${roomId}.`);
         
         const currentState = await getGameState(roomId);
-        if (currentState && currentState.turn === currentPlayerId) {
+        // Assegura que o jogo ainda está a decorrer e que é a vez deste jogador
+        if (!currentState || currentState.turn !== currentPlayerId) {
+            return;
+        }
+
+        const hand = currentState.hands[currentPlayerId];
+        // Se não tiver mão ou peças, passa a vez (salvaguarda para estados inconsistentes)
+        if (!hand || hand.length === 0) {
+            console.log(`[${SERVER_ID}] Timeout: jogador ${currentPlayerId} não tem mão ou peças, passando a vez.`);
             const result = handlePassTurn(currentState, currentPlayerId, roomId);
             await processGameLogicResult(result, roomId, currentState);
+            return;
         }
+
+        let firstValidMove: { piece: Domino; endId?: string } | null = null;
+
+        if (currentState.board.length === 0) {
+            // Qualquer peça pode ser jogada. Joga a primeira.
+            firstValidMove = { piece: hand[0] };
+        } else {
+            // Encontra a primeira peça na mão que pode ser jogada em qualquer ponta ativa.
+            for (const piece of hand) {
+                const validEnd = currentState.activeEnds.find(end => end.value === piece.value1 || end.value === piece.value2);
+                if (validEnd) {
+                    firstValidMove = { piece, endId: validEnd.id };
+                    break; // Encontrou uma jogada válida, para de procurar.
+                }
+            }
+        }
+
+        let result: GameLogicResult;
+        if (firstValidMove) {
+            // Foi encontrada uma jogada válida, executa-a.
+            console.log(`[${SERVER_ID}] Jogando peça automaticamente para ${currentPlayerId}: peça ${firstValidMove.piece.value1}-${firstValidMove.piece.value2}`);
+            result = handlePlayPiece(currentState, currentPlayerId, { type: 'PLAY_PIECE', piece: firstValidMove.piece, endId: firstValidMove.endId }, roomId);
+        } else {
+            // Nenhuma jogada válida, passa a vez.
+            console.log(`[${SERVER_ID}] Nenhuma jogada válida para ${currentPlayerId}, passando a vez.`);
+            result = handlePassTurn(currentState, currentPlayerId, roomId);
+        }
+
+        await processGameLogicResult(result, roomId, currentState);
+
     }, TURN_DURATION);
 
     activeTurnTimers.set(roomId, timerId);
@@ -267,7 +306,8 @@ export async function startGame(roomId: string) {
     const playerIds = Array.from(room.players);
     const players: Player[] = [];
     for (const id of playerIds) {
-        const username = `User-${id}`; 
+        const ws = clientsByUserId.get(id);
+        const username = ws?.user?.username || `User-${id}`; // MODIFICADO: Usa o nome de utilizador real
         players.push({ id, username });
     }
 
