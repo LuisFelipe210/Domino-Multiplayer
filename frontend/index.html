@@ -172,53 +172,88 @@
 
     <div id="game-view" class="view">
         <div id="game-status">A aguardar jogadores...</div>
+        <button id="start-game-btn" style="display: none; max-width: 400px; margin: 10px auto;">Iniciar Jogo</button>
+        <div id="turn-timer" style="text-align: center; font-size: 1.5em; color: #ffc107; font-weight: bold; margin-bottom: 10px; display: none;"></div>
         <div id="players-info"></div>
         <div id="game-board"></div>
-        <div id="player-hand-container">
+        <div id="player-hand-container" style="display: none;">
              <h2>A sua mão:</h2>
              <div id="player-hand"></div>
         </div>
-        <div class="button-group" style="margin-top: 20px;">
-            <button id="pass-turn-btn" class="secondary">Passar a Vez</button>
-            <button id="leave-game-btn" class="secondary" style="background-color: #dc3545;">Sair da Sala</button>
-        </div>
+        <div id="game-controls" class="button-group" style="margin-top: 20px;">
+            <button id="pass-turn-btn" class="secondary" style="display: none;">Passar a Vez</button>
+            </div>
+        <button id="leave-game-btn" class="secondary" style="background-color: #dc3545; max-width: 400px; margin: 10px auto;">Sair da Sala</button>
     </div>
 </div>
 
 <script>
-    // --- ALTERAÇÃO: A variável 'token' foi removida. O navegador gere a autenticação via cookies. ---
     let ws = null;
     let myId = null;
+    let roomState = {};
     let myHand = [];
     let gameState = {};
     let pieceToPlayWithOptions = null;
+    let intentionalDisconnect = false;
+    let reconnectAttempts = 0;
+    const maxReconnectAttempts = 3;
+    let turnTimerInterval = null;
 
-    // Elementos do DOM
-    const views = { auth: document.getElementById('auth-view'), lobby: document.getElementById('lobby-view'), game: document.getElementById('game-view') };
+    const views = { 
+        auth: document.getElementById('auth-view'), 
+        lobby: document.getElementById('lobby-view'), 
+        game: document.getElementById('game-view'),
+    };
     const registerForm = document.getElementById('register-form');
     const loginForm = document.getElementById('login-form');
     const joinRoomForm = document.getElementById('join-room-form');
     const gameBoard = document.getElementById('game-board');
     const playerHandDiv = document.getElementById('player-hand');
     const gameStatusDiv = document.getElementById('game-status');
+    const turnTimerDiv = document.getElementById('turn-timer');
     const playersInfoDiv = document.getElementById('players-info');
     const roomsList = document.getElementById('rooms-list');
     const refreshRoomsBtn = document.getElementById('refresh-rooms-btn');
     const passTurnBtn = document.getElementById('pass-turn-btn');
     const leaveGameBtn = document.getElementById('leave-game-btn');
     const logoutBtn = document.getElementById('logout-btn');
+    const startGameBtn = document.getElementById('start-game-btn');
+    const playerHandContainer = document.getElementById('player-hand-container');
+    const gameControls = document.getElementById('game-controls');
 
-    // Funções de Utilidade
     function showView(viewName) {
-        const isLoggedIn = document.cookie.includes('token=');
+        const isLoggedIn = !!document.cookie.split('; ').find(row => row.startsWith('token='));
         Object.values(views).forEach(v => v.classList.remove('active'));
-        views[viewName].classList.add('active');
+        if (views[viewName]) {
+             views[viewName].classList.add('active');
+        }
         logoutBtn.style.display = isLoggedIn ? 'block' : 'none';
     }
 
     function showAlert(message) { alert(message); }
+    
+    async function checkForActiveGame() {
+        try {
+            const res = await fetch('/api/lobby/rejoin');
+            if(!res.ok) {
+                showView('lobby');
+                listRooms();
+                return;
+            }
+            const data = await res.json();
+            if (data.active_game) {
+                showAlert('Reconectando a uma partida em andamento...');
+                connectWebSocket(data.gameServerUrl);
+            } else {
+                showView('lobby');
+                listRooms();
+            }
+        } catch (err) {
+            showView('lobby');
+            listRooms();
+        }
+    }
 
-    // Lógica de Autenticação
     registerForm.addEventListener('submit', async (e) => {
         e.preventDefault();
         const username = document.getElementById('register-username').value;
@@ -228,10 +263,19 @@
                 method: 'POST', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ username, password })
             });
-            if (!res.ok) throw new Error(JSON.stringify(await res.json()));
+            const data = await res.json();
+            if (!res.ok) throw new Error(JSON.stringify(data));
             showAlert('Registo bem-sucedido! Por favor, faça o login.');
             registerForm.reset();
-        } catch (err) { showAlert(`Erro no registo: ${err.message}`); }
+        } catch (err) {
+            try {
+                const errorObj = JSON.parse(err.message);
+                const errorMsg = errorObj.errors ? errorObj.errors[0].msg : errorObj.message;
+                showAlert(`Erro no registo: ${errorMsg}`);
+            } catch {
+                showAlert('Ocorreu um erro desconhecido no registo.');
+            }
+        }
     });
 
     loginForm.addEventListener('submit', async (e) => {
@@ -245,40 +289,48 @@
             });
             const data = await res.json();
             if (!res.ok || !data.success) throw new Error(data.message || 'Erro desconhecido.');
-            
-            // --- ALTERAÇÃO: Não precisamos mais de guardar o token. O cookie já foi definido pelo servidor. ---
-            showView('lobby');
-            listRooms();
+            checkForActiveGame();
         } catch (err) { showAlert(`Erro no login: ${err.message}`); }
+    });
+    
+    startGameBtn.addEventListener('click', () => {
+        if(ws && roomState.hostId === myId) {
+            ws.send(JSON.stringify({ type: 'START_GAME' }));
+        }
     });
 
     logoutBtn.addEventListener('click', async () => {
         try {
-            // --- ALTERAÇÃO: Chama o endpoint de logout para que o servidor limpe o cookie. ---
+            intentionalDisconnect = true;
+            if (ws) { ws.close(); ws = null; }
             await fetch('/api/auth/logout', { method: 'POST' });
         } catch (err) {
             console.error('Logout falhou, mas o cliente será limpo de qualquer maneira.', err);
         } finally {
             myId = null;
-            if (ws) { ws.close(); ws = null; }
             showView('auth');
         }
     });
 
-    // Lógica do Lobby
     refreshRoomsBtn.addEventListener('click', listRooms);
     
     async function listRooms() {
         try {
-            // --- ALTERAÇÃO: O cabeçalho de autorização foi removido. O cookie é enviado automaticamente. ---
             const res = await fetch('/api/lobby/rooms');
             if (!res.ok) throw new Error('Não foi possível carregar as salas. A sua sessão pode ter expirado.');
             const data = await res.json();
-            roomsList.innerHTML = '';
+            
+            while (roomsList.firstChild) {
+                roomsList.removeChild(roomsList.firstChild);
+            }
+
             if (data.rooms.length === 0) {
-                roomsList.innerHTML = '<li>Nenhuma sala disponível. Crie uma!</li>';
+                const li = document.createElement('li');
+                li.textContent = 'Nenhuma sala disponível. Crie uma!';
+                roomsList.appendChild(li);
                 return;
             }
+
             data.rooms.forEach(room => {
                 const li = document.createElement('li');
                 li.textContent = `${room.name} (${room.playerCount}/${room.maxPlayers}) ${room.hasPassword ? '🔒' : ''}`;
@@ -286,7 +338,7 @@
             });
         } catch (err) { 
             showAlert(err.message);
-            showView('auth'); // Se houver um erro, provavelmente é de autenticação.
+            showView('auth');
         }
     }
 
@@ -295,7 +347,6 @@
         const roomName = document.getElementById('room-name').value;
         const password = document.getElementById('room-password').value;
         try {
-            // --- ALTERAÇÃO: O cabeçalho de autorização foi removido. ---
             const res = await fetch('/api/lobby/rooms', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
@@ -307,102 +358,216 @@
         } catch (err) { showAlert(`Erro ao entrar na sala: ${err.message}`); }
     });
 
-    // Lógica do Jogo
     passTurnBtn.addEventListener('click', () => {
         if (ws && gameState.turn === myId) ws.send(JSON.stringify({ type: 'PASS_TURN' }));
         else showAlert('Não é a sua vez de passar.');
     });
+    
+    const leaveRoom = () => {
+        intentionalDisconnect = true;
+        if (ws) {
+            ws.close();
+            ws = null;
+        }
+        gameState = {};
+        roomState = {};
+        myHand = [];
+        pieceToPlayWithOptions = null;
+        renderGameState();
+
+        showView('lobby');
+        listRooms();
+    };
 
     leaveGameBtn.addEventListener('click', () => {
-        if (ws && confirm('Tem a certeza que quer abandonar a partida?')) {
-            ws.send(JSON.stringify({ type: 'LEAVE_GAME' }));
-            showView('lobby');
+        if (confirm('Tem a certeza que quer abandonar a partida?')) {
+            leaveRoom();
         }
     });
 
     function connectWebSocket(url) {
-        if(ws) { ws.close(); }
-        // --- ALTERAÇÃO: Não adicionamos mais o token à URL. O cookie será usado para autenticação. ---
-        ws = new WebSocket(url.replace('http', 'ws'));
+        if(ws) { 
+            intentionalDisconnect = true;
+            ws.close(); 
+        }
+        intentionalDisconnect = false;
+        
+        ws = new WebSocket(url);
 
-        ws.onopen = () => { console.log('Conectado ao servidor de jogo!'); showView('game'); };
+        ws.onopen = () => {
+            console.log('Conectado ao servidor de jogo!');
+            reconnectAttempts = 0;
+        };
+
         ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
             console.log('Mensagem recebida:', message);
             handleWebSocketMessage(message);
         };
-        ws.onclose = () => { console.log('Desconectado do servidor de jogo.'); showAlert('A conexão com o servidor foi perdida.'); showView('lobby'); };
-        ws.onerror = (err) => { console.error('Erro de WebSocket:', err); showAlert('Ocorreu um erro de conexão.'); };
+
+        ws.onclose = () => {
+            console.log('Desconectado do servidor de jogo.');
+            clearInterval(turnTimerInterval);
+            if (intentionalDisconnect) {
+                console.log('Desconexão intencional, não tentarei reconectar.');
+                return;
+            }
+            
+            if (reconnectAttempts < maxReconnectAttempts) {
+                reconnectAttempts++;
+                const delay = Math.pow(2, reconnectAttempts) * 1000;
+                console.log(`Tentando reconectar em ${delay / 1000}s... (tentativa ${reconnectAttempts})`);
+                setTimeout(() => connectWebSocket(url), delay);
+            } else {
+                showAlert('A conexão com o servidor foi perdida. Por favor, recarregue a página.');
+                showView('lobby');
+            }
+        };
+
+        ws.onerror = (err) => {
+            console.error('Erro de WebSocket:', err);
+            ws.close();
+        };
     }
 
-    // A função 'handleWebSocketMessage' e a lógica de renderização ('renderGame', 'createDominoElement')
-    // permanecem exatamente iguais e não precisam de ser alteradas.
-
     function handleWebSocketMessage(message) {
-        // ... (Esta função não muda)
         switch (message.type) {
-            case 'JOGO_INICIADO':
-                gameState = message;
-                myId = message.myId;
-                myHand = message.yourHand;
-                renderGame();
+            case 'ROOM_STATE':
+                roomState = message;
+                if (message.myId) myId = message.myId;
+                renderLobbyState();
+                showView('game');
                 break;
+            case 'JOGO_INICIADO':
             case 'ESTADO_ATUALIZADO':
                 gameState = message;
-                renderGame();
+                if(message.myId) myId = message.myId;
+                if(message.yourHand) myHand = message.yourHand; 
+                renderGameState();
+                showView('game');
                 break;
             case 'UPDATE_HAND':
                 myHand = message.yourNewHand;
-                renderGame();
+                renderGameState(); 
                 break;
             case 'CHOOSE_PLACEMENT':
                 pieceToPlayWithOptions = message;
                 showAlert(`A sua peça ${message.piece.value1}-${message.piece.value2} pode ser jogada em mais de um lugar. Clique numa ponta válida no tabuleiro.`);
-                renderGame();
+                renderGameState();
                 break;
             case 'JOGO_TERMINADO':
                 showAlert(`Fim de jogo! Vencedor: ${message.winner}. Motivo: ${message.reason}`);
-                showView('lobby');
-                listRooms();
+                leaveRoom();
+                break;
+            case 'ROOM_REMOVED':
+                if (views.lobby.classList.contains('active')) {
+                    const roomItem = Array.from(roomsList.children).find(li => li.textContent.startsWith(message.roomName));
+                    if(roomItem) roomItem.remove();
+                }
                 break;
             case 'ERRO':
                 showAlert(`Erro: ${message.message}`);
                 pieceToPlayWithOptions = null;
-                renderGame();
                 break;
         }
     }
     
-    function renderGame() {
-        // ... (Esta função não muda)
-        if (!gameState.players && myHand.length === 0) return;
-        passTurnBtn.disabled = gameState.turn !== myId;
-        gameStatusDiv.textContent = gameState.turn === myId ? "É a sua vez!" : `Aguardando a vez de ${gameState.players?.find(p => p.id === gameState.turn)?.username || '...'}`;
-        gameStatusDiv.style.color = gameState.turn === myId ? '#ffd700' : '#fff';
+    function renderLobbyState() {
+        gameStatusDiv.textContent = `A aguardar jogadores... ${roomState.playerCount} de 4`;
+        
+        if(roomState.hostId === myId && roomState.status === 'waiting') {
+            startGameBtn.style.display = 'block';
+            startGameBtn.disabled = roomState.playerCount < 2;
+        } else {
+            startGameBtn.style.display = 'none';
+        }
+
+        gameBoard.innerHTML = '';
+        playerHandContainer.style.display = 'none';
+        gameControls.style.display = 'none';
+        turnTimerDiv.style.display = 'none';
+        
         playersInfoDiv.innerHTML = '';
+        (roomState.players || []).forEach(p => {
+            const playerDiv = document.createElement('div');
+            playerDiv.className = 'player-info';
+            playerDiv.textContent = `${p.username || `User ${p.id}`} ${p.id === roomState.hostId ? '⭐' : ''}`;
+            playersInfoDiv.appendChild(playerDiv);
+        });
+    }
+
+    function renderGameState() {
+        if (!gameState || !gameState.players) {
+            renderLobbyState();
+            return;
+        }
+
+        // Lógica para a interface de observador
+        if (gameState.isSpectator) {
+            gameStatusDiv.textContent = 'Modo Espectador';
+            startGameBtn.style.display = 'none';
+            playerHandContainer.style.display = 'none';
+            gameControls.style.display = 'none';
+            turnTimerDiv.style.display = 'none';
+            leaveGameBtn.style.display = 'block'; // Garante que o botão de sair está visível
+        } else {
+            startGameBtn.style.display = 'none';
+            playerHandContainer.style.display = 'block';
+            gameControls.style.display = 'block';
+            passTurnBtn.style.display = 'inline-block';
+            leaveGameBtn.style.display = 'inline-block';
+            passTurnBtn.disabled = gameState.turn !== myId;
+
+            const currentPlayer = gameState.players.find(p => p.id === gameState.turn);
+            gameStatusDiv.textContent = gameState.turn === myId ? "É a sua vez!" : `Aguardando a vez de ${currentPlayer?.username || '...'}`;
+            
+            clearInterval(turnTimerInterval);
+            if (gameState.turn === myId) {
+                turnTimerDiv.style.display = 'block';
+                let timeLeft = 30;
+                const updateTimerDisplay = () => {
+                    turnTimerDiv.textContent = `Tempo Restante: ${timeLeft}s`;
+                    turnTimerDiv.style.color = timeLeft <= 10 ? '#dc3545' : '#ffc107';
+                };
+                updateTimerDisplay();
+                turnTimerInterval = setInterval(() => {
+                    timeLeft--;
+                    updateTimerDisplay();
+                    if (timeLeft <= 0) clearInterval(turnTimerInterval);
+                }, 1000);
+            } else {
+                turnTimerDiv.style.display = 'none';
+            }
+        }
+        
+        while (playersInfoDiv.firstChild) { playersInfoDiv.removeChild(playersInfoDiv.firstChild); }
+        while (playerHandDiv.firstChild) { playerHandDiv.removeChild(playerHandDiv.firstChild); }
+        while (gameBoard.firstChild) { gameBoard.removeChild(gameBoard.firstChild); }
+
         (gameState.players || []).forEach(p => {
             const playerDiv = document.createElement('div');
             playerDiv.className = 'player-info';
-            if (p.id === gameState.turn) playerDiv.classList.add('current-turn');
-            const pieceCount = gameState.playerPieceCounts ? gameState.playerPieceCounts[p.id] : (p.id === myId ? myHand.length : '...');
-            playerDiv.textContent = `${p.username}: ${pieceCount} peças`;
+            if (gameState.turn === p.id) playerDiv.classList.add('current-turn');
+            const pieceCount = gameState.playerPieceCounts ? gameState.playerPieceCounts[p.id] : 0;
+            playerDiv.textContent = `${p.username || `User ${p.id}`}: ${pieceCount} peças`;
             if (p.disconnectedSince) {
                  playerDiv.textContent += " (desconectado)";
                  playerDiv.style.opacity = '0.5';
             }
             playersInfoDiv.appendChild(playerDiv);
         });
-        playerHandDiv.innerHTML = '';
-        myHand.forEach(piece => {
+
+        (myHand || []).forEach(piece => {
             const dominoEl = createDominoElement(piece, true);
             dominoEl.onclick = () => {
+                if (gameState.isSpectator) return;
                 if (gameState.turn !== myId) return showAlert('Não é a sua vez.');
                 if (pieceToPlayWithOptions) return showAlert('Você precisa de escolher onde jogar a peça anterior.');
                 ws.send(JSON.stringify({ type: 'PLAY_PIECE', piece }));
             };
             playerHandDiv.appendChild(dominoEl);
         });
-        gameBoard.innerHTML = '';
+        
         const boardRect = gameBoard.getBoundingClientRect();
         const centerX = boardRect.width / 2;
         const centerY = boardRect.height / 2;
@@ -415,6 +580,7 @@
             dominoEl.style.transformOrigin = 'top left'; 
             gameBoard.appendChild(dominoEl);
         });
+
         if(pieceToPlayWithOptions) {
              (gameState.activeEnds || []).forEach(end => {
                 const isValidOption = pieceToPlayWithOptions.options.some(opt => opt.endId === end.id);
@@ -443,22 +609,41 @@
     }
 
     function createDominoElement(piece, isHand, rotation = 0) {
-        // ... (Esta função não muda)
         const dominoEl = document.createElement('div');
         const isVertical = rotation === 90 || rotation === 270;
         dominoEl.className = 'domino' + (isHand ? ' domino-hand' : ' domino-board');
+        
         if (!isHand) {
             dominoEl.style.width = isVertical ? 'var(--domino-height)' : 'var(--domino-width)';
             dominoEl.style.height = isVertical ? 'var(--domino-width)' : 'var(--domino-height)';
             dominoEl.style.flexDirection = isVertical ? 'column' : 'row';
         }
-        const value1Div = `<div class="domino-half">${piece.value1}</div>`;
-        const value2Div = `<div class="domino-half">${piece.value2}</div>`;
-        const separator = `<div class="separator"></div>`;
-        dominoEl.innerHTML = isVertical ? `${value1Div}${separator}${value2Div}` : `${value1Div}${separator}${value2Div}`;
+
+        const value1Div = document.createElement('div');
+        value1Div.className = 'domino-half';
+        value1Div.textContent = piece.value1;
+
+        const separator = document.createElement('div');
+        separator.className = 'separator';
+
+        const value2Div = document.createElement('div');
+        value2Div.className = 'domino-half';
+        value2Div.textContent = piece.value2;
+
+        dominoEl.appendChild(value1Div);
+        dominoEl.appendChild(separator);
+        dominoEl.appendChild(value2Div);
+
         return dominoEl;
     }
 
+    window.onload = () => {
+        if (document.cookie.includes('token=')) {
+            checkForActiveGame();
+        } else {
+            showView('auth');
+        }
+    };
 </script>
 
 </body>

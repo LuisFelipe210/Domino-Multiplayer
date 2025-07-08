@@ -12,53 +12,24 @@ services:
       - postgres_data:/var/lib/postgresql/data
       - ./backend/sql/init.sql:/docker-entrypoint-initdb.d/init.sql
     restart: unless-stopped
-
-  redis:
-    image: redis:6.2-alpine
-    container_name: domino-redis
-    restart: unless-stopped
-
-  backend1:
-    build:
-      context: ./backend
-    container_name: backend-server-1
-    environment:
-      - PORT=4001
-      - SERVER_ID=server-1
-      - DATABASE_URL=${DATABASE_URL} # Alterado para usar a variável do .env
-      - REDIS_URL=${REDIS_URL}       # Alterado para usar a variável do .env
-      - JWT_SECRET=${JWT_SECRET}
-    depends_on:
-      - postgres
-      - redis
-    restart: unless-stopped
-
-  backend2:
-    build:
-      context: ./backend
-    container_name: backend-server-2
-    environment:
-      - PORT=4002
-      - SERVER_ID=server-2
-      - DATABASE_URL=${DATABASE_URL} # Alterado para usar a variável do .env
-      - REDIS_URL=${REDIS_URL}       # Alterado para usar a variável do .env
-      - JWT_SECRET=${JWT_SECRET}
-    depends_on:
-      - postgres
-      - redis
-    restart: unless-stopped
-  
-  nginx:
-    image: nginx:stable-alpine
-    container_name: domino-nginx
     ports:
-      - "80:80"
+      - "5432:5432"
+
+  backend:
+    build:
+      context: ./backend
+    container_name: backend-server
+    ports:
+      - "80:4000"
+    environment:
+      - PORT=4000
+      - SERVER_ID=main-server
+      - DATABASE_URL=${DATABASE_URL}
+      - JWT_SECRET=${JWT_SECRET}
     volumes:
-      - ./frontend:/usr/share/nginx/html
-      - ./nginx/nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./frontend:/usr/src/app/frontend 
     depends_on:
-      - backend1
-      - backend2
+      - postgres
     restart: unless-stopped
 
 volumes:

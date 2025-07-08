@@ -1,23 +1,49 @@
-import { redisClient } from '../config/redis';
 import { pool } from '../config/database';
-import { GameState, Domino, Player, PlacedDomino, BoardEnd, GameLogicResult, GameEvent, AuthenticatedWebSocket } from '../types';
-import { PLAYERS_TO_START_GAME, INITIAL_HAND_SIZE } from '../config/gameConfig';
-import { sendToPlayer } from './gameUtils';
+import { GameState, Domino, Player, PlacedDomino, BoardEnd, GameLogicResult, GameEvent, AuthenticatedWebSocket, PlayPieceMessage } from '../types';
+import { PLAYERS_TO_START_GAME, INITIAL_HAND_SIZE, TURN_DURATION } from '../config/gameConfig';
+import { sendToPlayer, broadcastToRoom, broadcastToLobby, sendError } from './gameUtils';
 import { SERVER_ID } from '../config/environment';
-import { PlayPieceMessage } from '../types';
+import { memoryStore } from './memoryStore';
+import { clientsByUserId } from './websocketServer';
 
-// --- Funções de Acesso ao Estado ---
+const activeTurnTimers = new Map<string, NodeJS.Timeout>();
+
+const clearTurnTimer = (roomId: string) => {
+    if (activeTurnTimers.has(roomId)) {
+        clearTimeout(activeTurnTimers.get(roomId)!);
+        activeTurnTimers.delete(roomId);
+    }
+};
+
+export const startTurnTimer = (roomId: string, gameState: GameState) => {
+    clearTurnTimer(roomId);
+
+    const currentPlayerId = gameState.turn;
+    if (!currentPlayerId) return;
+
+    const timerId = setTimeout(async () => {
+        console.log(`[${SERVER_ID}] Tempo esgotado para o jogador ${currentPlayerId} na sala ${roomId}. Passando a vez.`);
+        
+        const currentState = await getGameState(roomId);
+        if (currentState && currentState.turn === currentPlayerId) {
+            const result = handlePassTurn(currentState, currentPlayerId, roomId);
+            await processGameLogicResult(result, roomId, currentState);
+        }
+    }, TURN_DURATION);
+
+    activeTurnTimers.set(roomId, timerId);
+};
+
 export const getGameState = async (roomId: string): Promise<GameState | null> => {
-  const gameStateRaw = await redisClient.get(`game_state:${roomId}`);
-  return gameStateRaw ? JSON.parse(gameStateRaw) : null;
+  return memoryStore.getGameState(roomId);
 };
 
 export const saveGameState = (roomId: string, gameState: GameState) => {
-  const stateToSave = { ...gameState, disconnectTimers: undefined };
-  return redisClient.set(`game_state:${roomId}`, JSON.stringify(stateToSave));
+  const stateToSave = { ...gameState, disconnectTimers: {} };
+  memoryStore.saveGameState(roomId, stateToSave);
+  return Promise.resolve();
 };
 
-// --- Funções Utilitárias ---
 const createDominoSet = (): Domino[] => {
   const pieces: Domino[] = [];
   for (let i = 0; i <= 6; i++) {
@@ -66,135 +92,188 @@ export const getPublicState = (gameState: GameState) => {
     };
 };
 
-// --- NOVA LÓGICA DE POSICIONAMENTO ---
-
-// Devolve as coordenadas da segunda metade de uma peça, baseado na sua origem e rotação
 function getSecondCell(x: number, y: number, rotation: 0 | 90 | 180 | 270): { x2: number, y2: number } {
-    if (rotation === 0) return { x2: x + 1, y2: y };   // Horizontal para a direita
-    if (rotation === 90) return { x2: x, y2: y + 1 };    // Vertical para baixo
-    if (rotation === 180) return { x2: x - 1, y2: y }; // Horizontal para a esquerda
-    if (rotation === 270) return { x2: x, y2: y - 1 };  // Vertical para cima
+    if (rotation === 0) return { x2: x + 1, y2: y };
+    if (rotation === 90) return { x2: x, y2: y + 1 };
+    if (rotation === 180) return { x2: x - 1, y2: y };
+    if (rotation === 270) return { x2: x, y2: y - 1 };
     return { x2: x, y2: y };
 }
 
-export function handlePlayPiece(gameState: GameState, userId: string, data: PlayPieceMessage): GameLogicResult {
-    const hand = gameState.hands[userId];
-    if (!hand) return { error: 'Mão do jogador não encontrada.' };
-    
-    const pieceToPlay: Domino = data.piece;
+export const changeTurn = (gameState: GameState, nextPlayerId: string, roomId: string) => {
+    gameState.turn = nextPlayerId;
+    broadcastToRoom(roomId, { type: 'ESTADO_ATUALIZADO', ...getPublicState(gameState) });
+    startTurnTimer(roomId, gameState);
+};
+
+export function handlePlayPiece(initialGameState: GameState, userId: string, data: PlayPieceMessage, roomId: string): GameLogicResult {
+    const hand = initialGameState.hands[userId];
+    if (!hand) {
+        return { error: 'Mão do jogador não encontrada.' };
+    }
+
+    const pieceFromClient: Domino = data.piece;
     const chosenEndId: string | undefined = data.endId;
-    const pieceIndex = hand.findIndex(p => (p.value1 === pieceToPlay.value1 && p.value2 === pieceToPlay.value2) || (p.value1 === pieceToPlay.value2 && p.value2 === pieceToPlay.value1));
-    if (pieceIndex === -1) return { error: 'Você não possui esta peça.' };
 
-    const actualPiece = hand[pieceIndex];
-    const isDouble = actualPiece.value1 === actualPiece.value2;
-    let newPiece: PlacedDomino;
+    const pieceIndex = hand.findIndex(p =>
+        (p.value1 === pieceFromClient.value1 && p.value2 === pieceFromClient.value2) ||
+        (p.value1 === pieceFromClient.value2 && p.value2 === pieceFromClient.value1)
+    );
 
-    if (gameState.board.length === 0) {
-        const rotation = isDouble ? 90 : 0;
-        newPiece = { piece: actualPiece, x: 0, y: 0, rotation, isSpinner: isDouble };
-        const { x2, y2 } = getSecondCell(0, 0, rotation);
-        gameState.occupiedCells['0,0'] = true;
-        gameState.occupiedCells[`${x2},${y2}`] = true;
-        
-        if (isDouble) {
-            gameState.activeEnds.push({ id: `end-left`, value: actualPiece.value1, x: -1, y: 0, attachDirection: 180 });
-            gameState.activeEnds.push({ id: `end-right`, value: actualPiece.value1, x: 1, y: 0, attachDirection: 0 });
-        } else {
-            gameState.activeEnds.push({ id: `end-left`, value: actualPiece.value1, x: -1, y: 0, attachDirection: 180 });
-            gameState.activeEnds.push({ id: `end-right`, value: actualPiece.value2, x: 2, y: 0, attachDirection: 0 });
-        }
+    if (pieceIndex === -1) {
+        return { error: 'Você não possui esta peça.' };
+    }
 
+    const pieceToPlay = { ...hand[pieceIndex] };
+
+    let newPlacedPiece: PlacedDomino;
+    let nextActiveEnds: BoardEnd[];
+    let nextOccupiedCells: Record<string, boolean>;
+
+    if (initialGameState.board.length === 0) {
+        newPlacedPiece = { piece: pieceToPlay, x: 0, y: 0, rotation: 0 };
+        const { x2, y2 } = getSecondCell(0, 0, 0);
+
+        nextOccupiedCells = {
+            ...initialGameState.occupiedCells,
+            '0,0': true,
+            [`${x2},${y2}`]: true,
+        };
+        nextActiveEnds = [
+            { id: `end-left`, value: pieceToPlay.value1, x: -1, y: 0, attachDirection: 180 },
+            { id: `end-right`, value: pieceToPlay.value2, x: 2, y: 0, attachDirection: 0 }
+        ];
     } else {
-        const validPlacements = gameState.activeEnds.filter(end => end.value === actualPiece.value1 || end.value === actualPiece.value2);
-        if (validPlacements.length === 0) return { error: 'Jogada inválida.' };
+        const validPlacements = initialGameState.activeEnds.filter(end =>
+            end.value === pieceToPlay.value1 || end.value === pieceToPlay.value2
+        );
+
+        if (validPlacements.length === 0) {
+            return { error: 'Jogada inválida.' };
+        }
 
         if (validPlacements.length > 1 && !chosenEndId) {
-            return { events: [{ target: 'player', payload: { type: 'CHOOSE_PLACEMENT', piece: actualPiece, options: validPlacements.map(p => ({endId: p.id, value: p.value})) } }] };
+            return {
+                events: [{
+                    target: 'player',
+                    payload: {
+                        type: 'CHOOSE_PLACEMENT',
+                        piece: pieceToPlay,
+                        options: validPlacements.map(p => ({ endId: p.id, value: p.value }))
+                    }
+                }]
+            };
         }
-        
+
         const targetEnd = chosenEndId ? validPlacements.find(e => e.id === chosenEndId) : validPlacements[0];
-        if (!targetEnd) return { error: 'A ponta escolhida não é válida.' };
-        
-        let rotation = targetEnd.attachDirection;
-        let connectingValue = targetEnd.value;
-        let x = targetEnd.x, y = targetEnd.y;
-
-        // Garante que o valor1 da peça é o que conecta
-        if (actualPiece.value2 === connectingValue) {
-            [actualPiece.value1, actualPiece.value2] = [actualPiece.value2, actualPiece.value1];
+        if (!targetEnd) {
+            return { error: 'A ponta escolhida não é válida.' };
         }
-        
-        if (isDouble) rotation = (targetEnd.attachDirection + 90) % 360 as 90 | 180 | 270 | 0;
 
+        if (pieceToPlay.value2 === targetEnd.value) {
+            [pieceToPlay.value1, pieceToPlay.value2] = [pieceToPlay.value2, pieceToPlay.value1];
+        }
+
+        const { x, y, attachDirection: rotation } = targetEnd;
         const { x2, y2 } = getSecondCell(x, y, rotation);
-        if (gameState.occupiedCells[`${x},${y}`] || gameState.occupiedCells[`${x2},${y2}`]) {
-             return { error: 'Posição já ocupada.' };
+
+        if (initialGameState.occupiedCells[`${x},${y}`] || initialGameState.occupiedCells[`${x2},${y2}`]) {
+            return { error: 'Posição já ocupada.' };
         }
 
-        newPiece = { piece: actualPiece, x, y, rotation, isSpinner: isDouble };
-        gameState.occupiedCells[`${x},${y}`] = true;
-        gameState.occupiedCells[`${x2},${y2}`] = true;
+        newPlacedPiece = { piece: pieceToPlay, x, y, rotation };
+
+        nextOccupiedCells = {
+            ...initialGameState.occupiedCells,
+            [`${x},${y}`]: true,
+            [`${x2},${y2}`]: true,
+        };
         
-        gameState.activeEnds = gameState.activeEnds.filter(e => e.id !== targetEnd.id);
-
-        if (isDouble) {
-            const potentialEnds = [
-                { dir: 0,   x: x2 + 1, y: y2 }, { dir: 180, x: x - 1,  y: y  },
-                { dir: 90,  x: x,      y: y + 1  }, { dir: 270, x: x,      y: y - 1  }
-            ];
-            potentialEnds.forEach((end, i) => {
-                if(!gameState.occupiedCells[`${end.x},${end.y}`]){
-                    gameState.activeEnds.push({ id: `end-${Date.now()}-${i}`, value: newPiece.piece.value1, x: end.x, y: end.y, attachDirection: end.dir as any });
-                }
-            });
-
+        const remainingEnds = initialGameState.activeEnds.filter(e => e.id !== targetEnd.id);
+        
+        const { x2: nextX, y2: nextY } = getSecondCell(x2, y2, rotation);
+        if(!initialGameState.occupiedCells[`${nextX},${nextY}`]){
+            const newEnd: BoardEnd = { id: `end-${Date.now()}`, value: pieceToPlay.value2, x: nextX, y: nextY, attachDirection: rotation };
+            nextActiveEnds = [...remainingEnds, newEnd];
         } else {
-            const { x2: nextX, y2: nextY } = getSecondCell(x2, y2, rotation);
-            if(!gameState.occupiedCells[`${nextX},${nextY}`]){
-                gameState.activeEnds.push({ id: `end-${Date.now()}`, value: newPiece.piece.value2, x: nextX, y: nextY, attachDirection: rotation });
-            }
+            nextActiveEnds = remainingEnds;
         }
     }
 
-    gameState.board.push(newPiece);
-    hand.splice(pieceIndex, 1);
-    
-    const events: GameEvent[] = [{ target: 'player', payload: { type: 'UPDATE_HAND', yourNewHand: hand } }];
+    const newHand = [...hand];
+    newHand.splice(pieceIndex, 1);
 
-    if (hand.length === 0) {
-        const winner = gameState.players.find(p => p.id === userId)!;
-        return { newState: gameState, events, terminal: { winner, reason: "O jogador bateu!" } };
-    }
+    const newState: GameState = {
+        ...initialGameState,
+        board: [...initialGameState.board, newPlacedPiece],
+        activeEnds: nextActiveEnds,
+        occupiedCells: nextOccupiedCells,
+        hands: {
+            ...initialGameState.hands,
+            [userId]: newHand
+        },
+        consecutivePasses: 0,
+    };
+
+    const events: GameEvent[] = [{ target: 'player', payload: { type: 'UPDATE_HAND', yourNewHand: newHand } }];
+    clearTurnTimer(roomId);
     
-    if (gameState.activeEnds.length === 0) {
-        const passResult = handlePassTurn(gameState, userId, true);
-        return { ...passResult, events: [...events, ...(passResult.events || [])] };
+    if (newHand.length === 0) {
+        const winner = newState.players.find(p => p.id === userId)!;
+        return { newState, events, terminal: { winner, reason: "O jogador bateu!" } };
     }
 
-    gameState.turn = getNextTurn(userId, gameState.players);
-    gameState.consecutivePasses = 0;
-    
-    events.push({ target: 'broadcast', payload: { type: 'ESTADO_ATUALIZADO', ...getPublicState(gameState) }});
-    return { newState: gameState, events };
+    if (newState.activeEnds.length === 0) {
+        const passResult = handlePassTurn(newState, userId, roomId, true);
+        const combinedEvents = [...events, ...(passResult.events || [])];
+        return { ...passResult, events: combinedEvents };
+    }
+
+    const nextPlayerId = getNextTurn(userId, newState.players);
+    changeTurn(newState, nextPlayerId, roomId);
+
+    return { newState, events };
 }
 
+export function handleStartGame(userId: string, roomId: string): GameLogicResult {
+    const room = memoryStore.getRoom(roomId);
 
-// --- RESTO DAS FUNÇÕES (startGame, endGame, etc.) ---
+    if (!room) {
+        return { error: "Sala não encontrada." };
+    }
+    if (room.hostId !== userId) {
+        return { error: "Apenas o dono da sala pode iniciar o jogo." };
+    }
+    if (room.status === 'playing') {
+        return { error: "O jogo já começou." };
+    }
+    if (room.playerCount < 2) {
+        return { error: "São necessários pelo menos 2 jogadores para iniciar." };
+    }
+
+    startGame(roomId);
+
+    return {};
+}
 
 export async function startGame(roomId: string) {
     console.log(`[${SERVER_ID}] Starting game in room ${roomId}`);
-    const playerIds = await redisClient.sMembers(`room:players:${roomId}`);
+    const room = memoryStore.getRoom(roomId);
+    if (!room) return;
+
+    room.status = 'playing';
+    memoryStore.saveRoom(roomId, room);
+
+    broadcastToLobby({ type: 'ROOM_REMOVED', roomName: roomId });
+
+    const playerIds = Array.from(room.players);
     const players: Player[] = [];
     for (const id of playerIds) {
-        const username = await redisClient.get(`user:${id}:username`);
-        players.push({ id, username: username || `User-${id}` });
-        await redisClient.set(`user:active_game:${id}`, roomId, { EX: 3600 });
+        const username = `User-${id}`; 
+        players.push({ id, username });
     }
 
-    if (players.length < PLAYERS_TO_START_GAME) return;
-
-    await redisClient.hDel('public_rooms', roomId);
+    // CORREÇÃO: Usa a constante INITIAL_HAND_SIZE para distribuir 7 peças.
     const dominoSet = shuffle(createDominoSet());
     const hands = Object.fromEntries(players.map(p => [p.id, dominoSet.splice(0, INITIAL_HAND_SIZE)]));
 
@@ -214,54 +293,56 @@ export async function startGame(roomId: string) {
             ...getPublicState(gameState)
         });
     });
+
+    startTurnTimer(roomId, gameState);
 }
 
 export async function endGame(roomId: string, gameState: GameState, winner: Player | null, reason: string) {
-    const winnerIdentifier = winner ? `ID ${winner.id}` : 'Ninguém';
-    console.log(`[${SERVER_ID}] Game over in room ${roomId}. Winner: ${winnerIdentifier}. Reason: ${reason}`);
-    if (gameState.disconnectTimers) Object.values(gameState.disconnectTimers).forEach(clearTimeout);
+    clearTurnTimer(roomId);
     
-    redisClient.publish('game-events', JSON.stringify({ 
-        roomId, 
-        payload: { type: 'JOGO_TERMINADO', winner: winner ? winner.username : 'Ninguém', reason } 
-    }));
+    const winnerIdentifier = winner ? `${winner.username} (ID ${winner.id})` : 'Ninguém';
+    console.log(`[${SERVER_ID}] Game over in room ${roomId}. Winner: ${winnerIdentifier}. Reason: ${reason}`);
+    
+    if (gameState.disconnectTimers) {
+        Object.values(gameState.disconnectTimers).forEach(clearTimeout);
+    }
+    
+    broadcastToRoom(roomId, { type: 'JOGO_TERMINADO', winner: winner ? winner.username : 'Ninguém', reason });
 
     try {
         if(winner && winner.id.match(/^\d+$/)) {
             await pool.query(
                 'INSERT INTO match_history (room_id, winner_id, winner_username, players) VALUES ($1, $2, $3, $4)',
-                [
-                    roomId,
-                    parseInt(winner.id, 10), 
-                    winner.username, 
-                    JSON.stringify(gameState.players.map(p => ({id: p.id, username: p.username})))
-                ]
+                [roomId, parseInt(winner.id, 10), winner.username, JSON.stringify(gameState.players.map(p => ({id: p.id, username: p.username})))]
             );
         }
     } catch (e) { 
         console.error("Error saving match history:", e); 
     }
 
-    const playerIds = gameState.players.map(p => `user:active_game:${p.id}`);
-    if (playerIds.length > 0) await redisClient.del(playerIds);
-    
-    await redisClient.del([`game_state:${roomId}`, `room:players:${roomId}`]);
-    await redisClient.hDel('public_rooms', roomId);
-    await redisClient.sRem('active_rooms_set', roomId);
-    await redisClient.hSet(`room:${roomId}`, 'status', 'finished');
+    memoryStore.deleteGameState(roomId);
+    memoryStore.deleteRoom(roomId);
+    console.log(`[${SERVER_ID}] Sala ${roomId} e estado de jogo foram destruídos.`);
 }
 
-export function handlePassTurn(gameState: GameState, userId: string, forceEndCheck = false): GameLogicResult {
-    gameState.consecutivePasses++;
-    const activePlayersCount = gameState.players.filter(p => !p.disconnectedSince).length;
+export function handlePassTurn(initialGameState: GameState, userId: string, roomId: string, forceEndCheck = false): GameLogicResult {
+    const newConsecutivePasses = initialGameState.consecutivePasses + 1;
+    const activePlayersCount = initialGameState.players.filter(p => !p.disconnectedSince).length;
 
-    if (forceEndCheck || gameState.consecutivePasses >= activePlayersCount) {
+    const newState: GameState = {
+        ...initialGameState,
+        consecutivePasses: newConsecutivePasses,
+    };
+
+    clearTurnTimer(roomId);
+
+    if (forceEndCheck || newConsecutivePasses >= activePlayersCount) {
         let winner: Player | null = null;
         let minPoints = Infinity;
         
-        gameState.players.forEach(p => {
+        newState.players.forEach(p => {
             if (!p.disconnectedSince) {
-                const points = gameState.hands[p.id]?.reduce((sum, piece) => sum + piece.value1 + piece.value2, 0) || 0;
+                const points = newState.hands[p.id]?.reduce((sum, piece) => sum + piece.value1 + piece.value2, 0) || 0;
                 if (points < minPoints) {
                     minPoints = points;
                     winner = p;
@@ -272,36 +353,87 @@ export function handlePassTurn(gameState: GameState, userId: string, forceEndChe
         });
         
         const reason = winner ? "Jogo fechado! Vitória por menos pontos." : "Jogo fechado! Empate.";
-        return { newState: gameState, terminal: { winner, reason } };
+        return { newState, terminal: { winner, reason } };
     }
 
-    gameState.turn = getNextTurn(userId, gameState.players);
-    const events: GameEvent[] = [{ target: 'broadcast', payload: { type: 'ESTADO_ATUALIZADO', ...getPublicState(gameState) } }];
-    return { newState: gameState, events };
+    const nextPlayerId = getNextTurn(userId, newState.players);
+    changeTurn(newState, nextPlayerId, roomId);
+    
+    return { newState };
 }
 
-export function handleLeaveGame(ws: AuthenticatedWebSocket, gameState: GameState, userId: string, forceRemove = false): GameLogicResult {
-    const leavingPlayer = gameState.players.find(p => p.id === userId);
-    if (!leavingPlayer) return { newState: gameState };
+export function handleLeaveGame(ws: AuthenticatedWebSocket, initialGameState: GameState, userId: string, forceRemove = false): GameLogicResult {
+    const playerIndex = initialGameState.players.findIndex(p => p.id === userId);
+    if (playerIndex === -1) return { newState: initialGameState };
 
-    const playerIndex = gameState.players.findIndex(p => p.id === userId);
-    if(playerIndex > -1) gameState.players[playerIndex].disconnectedSince = Date.now();
+    const leavingPlayer = initialGameState.players[playerIndex];
 
-    const remainingPlayers = gameState.players.filter(p => !p.disconnectedSince);
-    let reason = `Jogador ID ${userId} ${forceRemove ? 'foi removido' : 'abandonou'}.`;
+    const newPlayers = [...initialGameState.players];
+    newPlayers[playerIndex] = { ...newPlayers[playerIndex], disconnectedSince: Date.now() };
+
+    const newState: GameState = {
+        ...initialGameState,
+        players: newPlayers,
+    };
+
+    const isCurrentTurn = newState.turn === userId;
+    const roomId = memoryStore.getRoomIdFromUser(userId);
+    if(isCurrentTurn && roomId) {
+        clearTurnTimer(roomId);
+    }
+    
+    const remainingPlayers = newState.players.filter(p => !p.disconnectedSince);
+    let reason = `Jogador ${leavingPlayer.username || userId} ${forceRemove ? 'foi removido' : 'abandonou'}.`;
     let winner: Player | null = null;
 
     if (remainingPlayers.length === 1) {
         winner = remainingPlayers[0];
         reason += ` ${winner.username} é o vencedor.`;
-        return { newState: gameState, terminal: { winner, reason } };
+        return { newState, terminal: { winner, reason } };
     } else if (remainingPlayers.length === 0) {
         reason = 'Todos os jogadores saíram.';
-        return { newState: gameState, terminal: { winner: null, reason } };
+        return { newState, terminal: { winner: null, reason } };
     }
     
-    if (gameState.turn === userId) gameState.turn = getNextTurn(userId, gameState.players);
+    if (isCurrentTurn && roomId) {
+       const nextPlayerId = getNextTurn(userId, newState.players);
+       changeTurn(newState, nextPlayerId, roomId);
+    }
     
-    const events: GameEvent[] = [{ target: 'broadcast', payload: { type: 'ESTADO_ATUALIZADO', ...getPublicState(gameState) } }];
-    return { newState: gameState, events };
+    const events: GameEvent[] = [{ target: 'broadcast', payload: { type: 'ESTADO_ATUALIZADO', ...getPublicState(newState) } }];
+    return { newState, events };
+}
+
+export async function processGameLogicResult(result: GameLogicResult, roomId: string, originalGameState: GameState) {
+    if (result.error && originalGameState) {
+        const ws = clientsByUserId.get(originalGameState.turn);
+        if (ws) sendError(ws, result.error);
+        return;
+    }
+    
+    let finalGameState = result.newState || originalGameState;
+    if (!finalGameState) return; // Se não há estado, não há o que processar
+
+    if (result.events) {
+        const userIdForEvent = originalGameState.turn;
+        result.events.forEach((event: any) => {
+            if (event.target === 'player') {
+                sendToPlayer(userIdForEvent, event.payload);
+            }
+            if (event.target === 'broadcast') {
+                broadcastToRoom(roomId, event.payload);
+            }
+        });
+    }
+    
+    if (result.terminal) {
+        await endGame(roomId, finalGameState, result.terminal.winner, result.terminal.reason);
+    } else if (result.newState) {
+        await saveGameState(roomId, finalGameState);
+    }
+}
+
+export function handlePlayerReady(gameState: GameState | null, userId: string, roomId: string): GameLogicResult {
+    // Esta função foi desativada juntamente com a funcionalidade de "rematch".
+    return { error: "Funcionalidade de Jogar Novamente desativada." };
 }

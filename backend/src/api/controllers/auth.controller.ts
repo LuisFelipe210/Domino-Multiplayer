@@ -45,7 +45,7 @@ export const login = async (req: Request, res: Response) => {
             return res.status(401).json({ message: 'Credenciais inválidas.' });
         }
 
-        const token = jwt.sign({ userId: user.id, username: user.username }, JWT_SECRET, { expiresIn: '1h' });
+        const token = jwt.sign({ userId: String(user.id), username: user.username }, JWT_SECRET, { expiresIn: '1h' });
         
         res.cookie('token', token, {
             httpOnly: true,

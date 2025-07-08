@@ -19,7 +19,6 @@ export interface PlacedDomino {
     x: number;
     y: number;
     rotation: 0 | 90 | 180 | 270;
-    isSpinner?: boolean;
 }
 
 export interface BoardEnd {
@@ -34,6 +33,17 @@ export interface Player {
   id: string;
   username: string;
   disconnectedSince?: number;
+}
+
+export interface Room {
+  name: string;
+  playerCount: number;
+  status: 'waiting' | 'playing';
+  players: Set<string>;
+  hasPassword?: boolean;
+  passwordHash?: string;
+  hostId?: string;
+  readyPlayers: Set<string>;
 }
 
 export interface GameState {
@@ -91,5 +101,14 @@ export interface LeaveGameMessage extends BaseMessage {
   type: 'LEAVE_GAME';
 }
 
-// Um tipo de união que representa qualquer mensagem de jogo válida que o servidor pode receber.
-export type GameMessage = PlayPieceMessage | PassTurnMessage | LeaveGameMessage;
+export interface PlayerReadyMessage extends BaseMessage {
+  type: 'PLAYER_READY';
+}
+
+// NOVO: Interface para a mensagem de início de jogo
+export interface StartGameMessage extends BaseMessage {
+  type: 'START_GAME';
+}
+
+// MODIFICADO: União de tipos agora inclui a nova mensagem
+export type GameMessage = PlayPieceMessage | PassTurnMessage | LeaveGameMessage | PlayerReadyMessage | StartGameMessage;

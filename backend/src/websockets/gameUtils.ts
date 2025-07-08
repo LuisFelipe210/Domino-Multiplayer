@@ -1,32 +1,42 @@
 import { WebSocket } from 'ws';
-import { redisClient } from '../config/redis';
 import { AuthenticatedWebSocket } from '../types';
+import { clientsByUserId, roomsByClientId } from './websocketServer';
+import { wss } from './serverInstance';
 
-/**
- * Envia uma mensagem de erro padronizada para um cliente específico.
- * Esta função continua a precisar do 'ws' porque um erro é, geralmente, uma resposta direta
- * a uma ação específica e imediata daquele cliente.
- */
 export const sendError = (ws: AuthenticatedWebSocket, message: string) => {
   if (ws.readyState === WebSocket.OPEN) {
     ws.send(JSON.stringify({ type: 'ERRO', message }));
   }
 };
 
-/**
- * Envia uma carga de dados para um jogador específico, usando o sistema Pub/Sub.
- * @param userId O ID do utilizador alvo.
- * @param payload O objeto de dados a ser enviado.
- */
 export const sendToPlayer = (userId: string, payload: object) => {
-  redisClient.publish('game-events', JSON.stringify({ targetUserId: userId, payload }));
+  const client = clientsByUserId.get(userId);
+  if (client && client.readyState === WebSocket.OPEN) {
+    client.send(JSON.stringify(payload));
+  }
 };
 
 /**
- * Transmite uma carga de dados para todos os jogadores numa sala, usando o sistema Pub/Sub.
- * @param roomId O ID da sala.
- * @param payload O objeto de dados a ser enviado.
+ * Transmite uma carga de dados para todos os jogadores numa sala.
  */
-export const broadcastToRoom = (roomId: string, payload: object) => {
-  redisClient.publish('game-events', JSON.stringify({ roomId, payload }));
+export const broadcastToRoom = (roomId: string, payload: object | ((player: AuthenticatedWebSocket) => object)) => {
+  wss.clients.forEach(client => {
+    const wsClient = client as AuthenticatedWebSocket;
+    if (roomsByClientId.get(wsClient) === roomId && wsClient.readyState === WebSocket.OPEN) {
+        const message = typeof payload === 'function' ? payload(wsClient) : payload;
+        wsClient.send(JSON.stringify(message));
+    }
+  });
+};
+
+/**
+ * NOVO: Transmite uma mensagem para todos os clientes que não estão numa sala (ou seja, estão no lobby).
+ */
+export const broadcastToLobby = (payload: object) => {
+    wss.clients.forEach(client => {
+        const wsClient = client as AuthenticatedWebSocket;
+        if (!roomsByClientId.get(wsClient) && wsClient.readyState === WebSocket.OPEN) {
+            wsClient.send(JSON.stringify(payload));
+        }
+    });
 };
