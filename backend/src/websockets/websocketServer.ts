@@ -56,6 +56,16 @@ export function initWebSocketServer(server: http.Server) {
         const userId = String(user.userId);
         const roomId = pathname.split('/').pop()!;
         
+        // NOVO: Lidar com conexões duplicadas. Se um usuário se conectar novamente,
+        // a conexão antiga é encerrada para garantir que apenas a mais recente seja usada.
+        if (clientsByUserId.has(userId)) {
+            console.log(`[${SERVER_ID}] Conexão duplicada detectada para o utilizador ID ${userId}. A encerrar a conexão antiga.`);
+            const oldWs = clientsByUserId.get(userId);
+            if (oldWs && oldWs !== ws) {
+                oldWs.terminate(); // Encerra a conexão antiga, o que acionará seu evento 'close'.
+            }
+        }
+        
         clientsByUserId.set(userId, ws); 
         roomsByClientId.set(ws, roomId);
         memoryStore.setUserRoom(userId, roomId);
@@ -67,21 +77,28 @@ export function initWebSocketServer(server: http.Server) {
             const playerInGame = gameState.players.find(p => p.id === userId);
             
             if (playerInGame) { // Jogador está a reconectar
+                // O evento 'close' da conexão antiga pode ter marcado o jogador como desconectado.
+                // Esta lógica irá marcá-lo como reconectado.
                 if (playerInGame.disconnectedSince) {
                     console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} reconectou-se ao JOGO ${roomId}.`);
                     delete playerInGame.disconnectedSince;
                     clearDisconnectTimer(gameState, userId);
                     await saveGameState(roomId, gameState);
+                    // Notifica todos na sala que o jogador voltou.
+                    broadcastToRoom(roomId, { type: 'ESTADO_ATUALIZADO', ...getPublicState(gameState) });
                 }
                 
+                // Envia o estado completo, incluindo a mão do jogador.
                 sendToPlayer(userId, {
                     type: 'ESTADO_ATUALIZADO',
                     myId: userId,
                     ...getPublicState(gameState),
                     yourHand: gameState.hands[userId],
                 });
-                return;
-            } else { // NOVO: Jogador entra como OBSERVADOR
+                // MODIFICADO: O 'return' que existia aqui foi REMOVIDO.
+                // A sua remoção é a correção principal, permitindo que os handlers de 'message' e 'close'
+                // sejam adicionados abaixo, tornando o clique nas peças funcional novamente.
+            } else { // Jogador entra como OBSERVADOR
                 console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} entrou como OBSERVADOR na sala ${roomId}.`);
                 sendToPlayer(userId, {
                     type: 'ESTADO_ATUALIZADO',

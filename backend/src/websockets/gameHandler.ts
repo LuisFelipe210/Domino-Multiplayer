@@ -459,13 +459,8 @@ export function handleLeaveGame(ws: AuthenticatedWebSocket, initialGameState: Ga
     
     const remainingPlayers = newState.players.filter(p => !p.disconnectedSince);
     let reason = `Jogador ${leavingPlayer.username || userId} ${forceRemove ? 'foi removido' : 'abandonou'}.`;
-    let winner: Player | null = null;
 
-    if (remainingPlayers.length === 1) {
-        winner = remainingPlayers[0];
-        reason += ` ${winner.username} é o vencedor.`;
-        return { newState, terminal: { winner, reason } };
-    } else if (remainingPlayers.length === 0) {
+    if (remainingPlayers.length === 0) {
         reason = 'Todos os jogadores saíram.';
         return { newState, terminal: { winner: null, reason } };
     }
