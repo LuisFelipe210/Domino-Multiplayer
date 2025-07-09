@@ -17,6 +17,8 @@ const elements = {
     showRegisterLink: document.getElementById('show-register-link'),
     showLoginLink: document.getElementById('show-login-link'),
     logoutBtn: document.getElementById('logout-btn'),
+    userInfoHeader: document.getElementById('user-info-header'),
+    welcomeUsername: document.getElementById('welcome-username'),
     // Lobby
     joinRoomForm: document.getElementById('join-room-form'),
     roomsList: document.getElementById('rooms-list'),
@@ -81,12 +83,19 @@ export const ui = {
     ...elements, // Expõe todos os elementos para o main.js
 
     showView(viewName) {
-        const isLoggedIn = !!document.cookie.split('; ').find(row => row.startsWith('token='));
         Object.values(this.views).forEach(v => v.classList.remove('active'));
         if (this.views[viewName]) {
             this.views[viewName].classList.add('active');
         }
-        this.logoutBtn.style.display = isLoggedIn && viewName !== 'auth' ? 'block' : 'none';
+    },
+
+    showLoggedInHeader(username) {
+        this.welcomeUsername.textContent = `Olá, ${username}`;
+        this.userInfoHeader.style.display = 'flex';
+    },
+
+    showLoggedOutHeader() {
+        this.userInfoHeader.style.display = 'none';
     },
 
     showAlert(message, buttons = [{ text: 'OK', action: 'close' }]) {

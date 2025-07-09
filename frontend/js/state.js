@@ -1,6 +1,7 @@
 export const state = {
     ws: null,
     myId: null,
+    username: null,
     roomState: {},
     myHand: [],
     gameState: {},

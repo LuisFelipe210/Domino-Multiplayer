@@ -73,13 +73,27 @@ hr { margin: 25px 0; border: 0; border-top: 2px dashed var(--accent-color); }
 .btn-danger { background-color: var(--danger-color); }
 .btn-danger:hover { background-color: var(--danger-hover); }
 
-.btn-logout {
+#user-info-header {
     position: absolute;
     top: 15px;
     right: 20px;
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    z-index: 10;
+}
+
+#welcome-username {
+    font-size: 1.1rem;
+    color: var(--ink-color);
+    font-weight: bold;
+}
+
+#user-info-header .btn {
     width: auto;
     padding: 8px 15px;
     font-size: 1.1rem;
+    margin-top: 0;
 }
 
 input[type="text"], input[type="password"] {

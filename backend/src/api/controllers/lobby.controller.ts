@@ -75,18 +75,19 @@ export const joinRoom = async (req: Request, res: Response) => {
 
 export const rejoinGame = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
+    const username = req.user!.username;
     
     try {
         const roomId = memoryStore.getRoomIdFromUser(String(userId));
         if (!roomId || !memoryStore.getGameState(roomId)) {
-             return res.json({ active_game: false });
+             return res.json({ active_game: false, user: { username } });
         }
         
         console.log(`[Rejoin API] Utilizador ID ${req.user!.userId} encontrado no jogo ativo ${roomId}.`);
         const protocol = req.protocol === 'https' ? 'wss' : 'ws';
         const gameServerUrl = `${protocol}://${req.get('host')}/ws/game/${roomId}`;
         
-        res.json({ active_game: true, gameServerUrl });
+        res.json({ active_game: true, gameServerUrl, user: { username } });
 
     } catch (error) {
         console.error(`Erro ao tentar reconectar utilizador ${userId}:`, error);

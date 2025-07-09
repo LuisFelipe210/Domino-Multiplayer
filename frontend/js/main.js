@@ -3,6 +3,30 @@ import { ui } from './ui.js';
 import { api } from './api.js';
 import { ws } from './websocket.js';
 
+// --- Função auxiliar para verificar sessão e iniciar a UI ---
+async function checkSessionAndStart() {
+    try {
+        const data = await api.checkForActiveGame();
+        if (data.user && data.user.username) {
+            state.username = data.user.username;
+            ui.showLoggedInHeader(state.username);
+        }
+
+        if (data.active_game) {
+            ui.showAlert('Reconectando a uma partida em andamento...');
+            ws.connect(data.gameServerUrl);
+        } else {
+            ui.showView('lobby');
+            ui.renderRoomsList();
+        }
+    } catch (error) {
+        // Erro aqui geralmente significa token inválido ou expirado
+        state.username = null;
+        ui.showLoggedOutHeader();
+        ui.showView('auth');
+    }
+}
+
 // --- Event Listeners de Autenticação e Navegação ---
 
 ui.loginForm.addEventListener('submit', async (e) => {
@@ -11,7 +35,7 @@ ui.loginForm.addEventListener('submit', async (e) => {
     const password = document.getElementById('login-password').value;
     try {
         await api.login(username, password);
-        await api.checkForActiveGame();
+        await checkSessionAndStart();
     } catch (err) {
         ui.showAlert(`Erro no login: ${err.message}`);
     }
@@ -40,6 +64,8 @@ ui.logoutBtn.addEventListener('click', async () => {
     }
     await api.logout();
     state.myId = null;
+    state.username = null;
+    ui.showLoggedOutHeader();
     ui.showView('auth');
 });
 
@@ -103,8 +129,9 @@ ui.leaveGameBtn.addEventListener('click', () => {
 // --- Inicialização da Aplicação ---
 window.addEventListener('load', () => {
     if (document.cookie.includes('token=')) {
-        api.checkForActiveGame();
+        checkSessionAndStart();
     } else {
+        ui.showLoggedOutHeader();
         ui.showView('auth');
     }
 });

@@ -49,22 +49,6 @@ export const api = {
     },
     
     async checkForActiveGame() {
-        try {
-            const res = await fetch('/api/lobby/rejoin');
-            if(!res.ok) { // Sessão expirada ou outro erro
-                ui.showView('auth');
-                return;
-            }
-            const data = await res.json();
-            if (data.active_game) {
-                ui.showAlert('Reconectando a uma partida em andamento...');
-                ws.connect(data.gameServerUrl);
-            } else {
-                ui.showView('lobby');
-                ui.renderRoomsList();
-            }
-        } catch (err) {
-            ui.showView('auth'); // Provavelmente cookie inválido, força novo login
-        }
+        return fetchAPI('/api/lobby/rejoin');
     }
 };
