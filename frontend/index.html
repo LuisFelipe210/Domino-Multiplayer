@@ -86,26 +86,36 @@
     <!-- Game View -->
     <div id="game-view" class="view">
         <div class="game-container">
-            <div id="game-status">A aguardar jogadores...</div>
-            <button id="start-game-btn" class="btn" style="display: none; margin: 10px auto;">Iniciar Jogo</button>
-            <button id="ready-btn" class="btn" style="display: none; margin: 10px auto;">Estou Pronto!</button>
-            <div id="turn-timer"></div>
-            
-            <div id="players-info-container">
-                <h3>Jogadores</h3>
-                <div id="players-info"></div>
+            <!-- Game Header: Status and Pre-Game buttons -->
+            <div class="game-header">
+                <div id="game-status">A aguardar jogadores...</div>
+                <button id="start-game-btn" class="btn" style="display: none;">Iniciar Jogo</button>
+                <button id="ready-btn" class="btn" style="display: none;">Estou Pronto!</button>
+                <div id="turn-timer"></div>
             </div>
 
-            <div id="game-board"></div>
+            <!-- Main Game Area: Board on the left, sidebar on the right -->
+            <div class="game-body">
+                <div id="game-board-container"> <!-- Wrapper for the board -->
+                    <div id="game-board"></div>
+                </div>
 
+                <div class="game-sidebar"> <!-- Sidebar for info and controls -->
+                    <div id="players-info-container">
+                        <h3>Jogadores</h3>
+                        <div id="players-info"></div>
+                    </div>
+                    <div id="game-controls">
+                        <button id="pass-turn-btn" class="btn btn-secondary" style="display: none;">Passar a Vez</button>
+                        <button id="leave-game-btn" class="btn btn-danger">Sair da Sala</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Player's hand at the bottom -->
             <div id="player-hand-container" style="display: none;">
                 <h3>A sua mão</h3>
                 <div id="player-hand"></div>
-            </div>
-            
-            <div id="game-controls">
-                <button id="pass-turn-btn" class="btn btn-secondary" style="display: none;">Passar a Vez</button>
-                <button id="leave-game-btn" class="btn btn-danger">Sair da Sala</button>
             </div>
         </div>
     </div>

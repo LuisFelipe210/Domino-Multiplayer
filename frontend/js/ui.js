@@ -70,10 +70,10 @@ function createDominoElement(piece, isHand) {
     dominoEl.appendChild(divider);
     dominoEl.appendChild(createHalf(piece.value2));
 
-    // Se a peça está na mão, a rotacionamos para a vertical
-    if (isHand) {
-        dominoEl.style.transform = 'rotate(90deg)';
-    }
+    // A linha abaixo foi REMOVIDA para que o CSS controle a rotação
+    // if (isHand) {
+    //     dominoEl.style.transform = 'rotate(90deg)';
+    // }
 
     return dominoEl;
 }

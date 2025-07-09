@@ -147,9 +147,49 @@ input[type="text"]:focus, input[type="password"]:focus {
 #rooms-list li { background: #f8f9fa; padding: 10px; border-bottom: 1px solid #dee2e6; margin-bottom: 5px; border-radius: 4px; }
 #rooms-list li:last-child { border-bottom: none; }
 
+/* NOVO: Layout específico para a Game View */
+#game-view .game-container {
+    display: flex;
+    flex-direction: column;
+    height: calc(100vh - 100px); /* Ocupa a altura da janela, descontando paddings */
+    gap: 10px;
+}
+
+.game-header {
+    text-align: center;
+    flex-shrink: 0;
+}
+
+.game-header .btn {
+    width: auto;
+    padding: 10px 25px;
+    margin: 5px auto;
+}
+
+.game-body {
+    display: flex;
+    flex: 1; /* Ocupa o espaço vertical restante */
+    gap: 20px;
+    min-height: 0; /* Correção para flexbox não transbordar */
+}
+
+.game-sidebar {
+    width: 280px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+}
+
+#game-board-container {
+    flex: 1; /* Ocupa o espaço horizontal restante */
+    position: relative;
+    min-width: 0;
+}
+
 #game-status {
     text-align: center; font-size: 1.5em; font-weight: bold;
-    margin-bottom: 15px; padding: 10px; background: #ecf0f1;
+    margin-bottom: 10px; padding: 10px; background: #ecf0f1;
     color: #333; border-radius: 5px;
 }
 #turn-timer {
@@ -157,33 +197,75 @@ input[type="text"]:focus, input[type="password"]:focus {
     margin-bottom: 10px; display: none;
 }
 
-#players-info-container { margin-bottom: 20px; }
-#players-info { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; }
-.player-info { padding: 10px; background-color: #e4e6eb; border-radius: 4px; border: 2px solid transparent; }
+#players-info-container { 
+    margin-bottom: 0; 
+    flex-grow: 1;
+    background: #f8f9fa;
+    border: 2px dashed #ddd;
+    border-radius: 8px;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+#players-info-container h3 {
+    flex-shrink: 0;
+}
+
+#players-info { 
+    display: flex; 
+    flex-direction: column; /* Empilha jogadores verticalmente */
+    gap: 10px; 
+    flex-grow: 1;
+    overflow-y: auto; /* Adiciona scroll se a lista for grande */
+}
+.player-info { 
+    padding: 10px; background-color: #e4e6eb; border-radius: 4px; border: 2px solid transparent; 
+    text-align: center;
+}
 .player-info.current-turn { background-color: #ffd700; font-weight: bold; border-color: #2c3e50; }
 .player-info.disconnected { opacity: 0.5; text-decoration: line-through; }
 
 #game-board {
-    position: relative;
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
-    height: 600px;
+    height: 100%; /* Tamanho definido pelo #game-board-container */
     border: 10px solid #5a3a22; /* Wood-like border */
     background-color: #3a864d; /* Green felt color */
-    margin: 20px 0;
+    margin: 0; /* Remove margin antiga */
     overflow: auto;
     border-radius: 15px;
     box-shadow: inset 0 0 10px rgba(0,0,0,0.5);
 }
 
-#player-hand-container { margin-top: 15px; }
+#player-hand-container { 
+    margin-top: 0; 
+    flex-shrink: 0;
+}
 #player-hand {
     display: flex; flex-wrap: wrap; justify-content: center;
-    gap: 15px; margin-top: 10px; padding: 20px 10px;
-    background: rgba(0,0,0,0.05); border-radius: 8px; min-height: 100px;
+    gap: 15px; margin-top: 10px; 
+    /* MODIFICADO: Aumenta o padding superior para dar espaço à animação */
+    padding: 25px 10px 15px 10px;
+    background: rgba(0,0,0,0.05); border-radius: 8px; 
+    min-height: 100px;
+    max-height: 180px; /* Permite 2 filas de peças, se necessário */
+    overflow-y: auto;
 }
-#game-controls { margin-top: 20px; display: flex; gap: 10px; justify-content: center; }
-#game-controls .btn { width: auto; padding: 10px 30px; }
-
+#game-controls { 
+    margin-top: auto; /* Empurra os controles para o fundo da sidebar */
+    display: flex; 
+    flex-direction: column; 
+    gap: 10px; 
+    justify-content: center; 
+    flex-shrink: 0;
+}
+#game-controls .btn { 
+    width: 100%; 
+    padding: 12px 20px;
+}
 
 /* --- ESTILOS DAS PEÇAS DE DOMINÓ (3D Style) --- */
 /* MODIFICADO: Peça padrão agora é horizontal */
@@ -201,11 +283,17 @@ input[type="text"]:focus, input[type="password"]:focus {
     box-shadow: 1px 1px 0px #ccc, 2px 2px 0px #ccc, 3px 3px 6px rgba(0, 0, 0, 0.3);
     transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
 }
-.domino-hand { cursor: pointer; position: relative; }
 .domino-board { position: absolute; }
+/* MODIFICADO: A rotação da peça na mão é agora controlada pelo CSS */
+.domino-hand { 
+    cursor: pointer; 
+    position: relative;
+    transform: rotate(90deg);
+}
 
+/* MODIFICADO: A animação de hover agora combina a rotação com o movimento */
 .domino-hand:hover {
-    transform: translateY(-8px);
+    transform: rotate(90deg) translateY(-8px);
     box-shadow: 1px 1px 0px #ccc, 2px 2px 0px #ccc, 9px 9px 15px rgba(0, 0, 0, 0.25);
 }
 
