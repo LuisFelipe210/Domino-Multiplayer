@@ -30,11 +30,12 @@ const elements = {
     passTurnBtn: document.getElementById('pass-turn-btn'),
     leaveGameBtn: document.getElementById('leave-game-btn'),
     startGameBtn: document.getElementById('start-game-btn'),
+    readyBtn: document.getElementById('ready-btn'),
     playerHandContainer: document.getElementById('player-hand-container'),
     // Modal
     alertModal: document.getElementById('alert-modal'),
     alertMessage: document.getElementById('alert-message'),
-    alertCloseBtn: document.getElementById('alert-close-btn'),
+    alertModalButtons: document.getElementById('alert-modal-buttons'),
 };
 
 function createDominoElement(piece, isHand) {
@@ -88,8 +89,36 @@ export const ui = {
         this.logoutBtn.style.display = isLoggedIn && viewName !== 'auth' ? 'block' : 'none';
     },
 
-    showAlert(message) {
+    showAlert(message, buttons = [{ text: 'OK', action: 'close' }]) {
         this.alertMessage.textContent = message;
+        this.alertModalButtons.innerHTML = ''; // Limpa botões anteriores
+
+        buttons.forEach(btnInfo => {
+            const button = document.createElement('button');
+            button.textContent = btnInfo.text;
+            button.className = 'btn';
+            if (btnInfo.class) {
+                button.classList.add(btnInfo.class);
+            }
+            
+            button.onclick = () => {
+                this.alertModal.style.display = 'none'; // Sempre fecha o modal ao clicar
+                switch(btnInfo.action) {
+                    case 'rematch':
+                        ws.sendMessage({ type: 'PLAYER_READY' });
+                        break;
+                    case 'leave':
+                        ws.leaveRoom();
+                        break;
+                    case 'close':
+                    default:
+                        // Apenas fecha, não faz mais nada
+                        break;
+                }
+            };
+            this.alertModalButtons.appendChild(button);
+        });
+
         this.alertModal.style.display = 'flex';
     },
 
@@ -113,26 +142,51 @@ export const ui = {
     },
     
     renderLobbyState() {
-        const { roomState } = state;
-        this.gameStatusDiv.textContent = `A aguardar jogadores... ${roomState.playerCount} de ${roomState.maxPlayers || 4}`;
-        
-        if (roomState.hostId === state.myId && roomState.status === 'waiting') {
-            this.startGameBtn.style.display = 'block';
-            this.startGameBtn.disabled = roomState.playerCount < 2;
-        } else {
-            this.startGameBtn.style.display = 'none';
-        }
+        const { roomState, myId } = state;
 
         clearBoard();
         this.playerHandContainer.style.display = 'none';
         this.passTurnBtn.style.display = 'none';
         this.turnTimerDiv.style.display = 'none';
+        this.readyBtn.style.display = 'none';
+        this.startGameBtn.style.display = 'none';
+
+        if (!roomState || !roomState.players) return;
         
+        this.gameStatusDiv.textContent = `A aguardar jogadores... ${roomState.playerCount} de ${roomState.maxPlayers || 4}`;
+        
+        const isHost = roomState.hostId === myId;
+        const isReady = (roomState.readyPlayers || []).includes(myId);
+
+        if (roomState.status === 'waiting') {
+            if (state.gameEnded) { // Fluxo de Rematch
+                if (isReady) {
+                    this.readyBtn.style.display = 'block';
+                    this.readyBtn.textContent = 'A aguardar outros...';
+                    this.readyBtn.disabled = true;
+                } else {
+                    this.readyBtn.style.display = 'block';
+                    this.readyBtn.textContent = 'Estou Pronto!';
+                    this.readyBtn.disabled = false;
+                }
+            } else { // Lobby inicial
+                if (isHost) {
+                    this.startGameBtn.style.display = 'block';
+                    this.startGameBtn.disabled = roomState.playerCount < 2;
+                } else {
+                    const host = roomState.players.find(p => p.id === roomState.hostId);
+                    this.gameStatusDiv.textContent = `Aguardando o anfitrião (${host?.username || '...'}) iniciar o jogo.`;
+                }
+            }
+        }
+
         this.playersInfoDiv.innerHTML = '';
         (roomState.players || []).forEach(p => {
             const playerDiv = document.createElement('div');
             playerDiv.className = 'player-info';
-            playerDiv.textContent = `${p.username || `User ${p.id}`} ${p.id === roomState.hostId ? '⭐' : ''}`;
+            const readyMark = (roomState.readyPlayers || []).includes(p.id) ? '✅' : '';
+            const hostMark = p.id === roomState.hostId ? '⭐' : '';
+            playerDiv.textContent = `${p.username || `User ${p.id}`} ${hostMark} ${readyMark}`;
             this.playersInfoDiv.appendChild(playerDiv);
         });
     },
@@ -145,7 +199,9 @@ export const ui = {
             return;
         }
 
+        state.gameEnded = false;
         this.startGameBtn.style.display = 'none';
+        this.readyBtn.style.display = 'none';
 
         // --- Status e Controles ---
         if (gameState.isSpectator) {

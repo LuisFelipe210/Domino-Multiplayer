@@ -9,4 +9,5 @@ export const state = {
     reconnectAttempts: 0,
     maxReconnectAttempts: 5,
     turnTimerInterval: null,
+    gameEnded: false,
 };

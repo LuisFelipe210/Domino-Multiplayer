@@ -48,7 +48,7 @@ export const handleGameMessage = async (ws: AuthenticatedWebSocket, message: Raw
             result = handleLeaveGame(ws, gameState!, userId, false);
             break;
         case 'PLAYER_READY':
-            result = handlePlayerReady(gameState, userId, roomId);
+            result = handlePlayerReady(userId, roomId);
             break;
         case 'START_GAME':
             result = handleStartGame(userId, roomId);

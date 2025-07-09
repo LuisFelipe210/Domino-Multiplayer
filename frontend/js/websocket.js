@@ -11,6 +11,13 @@ function handleMessage(message) {
             ui.showView('game');
             break;
         case 'JOGO_INICIADO':
+            state.gameEnded = false; // Reseta a flag
+            state.gameState = message;
+            if (message.myId) state.myId = message.myId;
+            if (message.yourHand) state.myHand = message.yourHand;
+            ui.renderGameState();
+            ui.showView('game');
+            break;
         case 'ESTADO_ATUALIZADO':
             state.gameState = message;
             if (message.myId) state.myId = message.myId;
@@ -28,8 +35,19 @@ function handleMessage(message) {
             ui.renderGameState();
             break;
         case 'JOGO_TERMINADO':
-            ui.showAlert(`Fim de jogo! Vencedor: ${message.winner}. Motivo: ${message.reason}`);
-            ws.leaveRoom();
+            state.gameEnded = true; // Define a flag
+            state.gameState = {};   // Limpa o estado do jogo anterior
+            const gameOverMessage = `Fim de jogo! Vencedor: ${message.winner}. Motivo: ${message.reason}`;
+            if (message.canRematch) {
+                ui.showAlert(gameOverMessage, [
+                    { text: 'Jogar Novamente', action: 'rematch', class: 'btn-secondary' },
+                    { text: 'Sair para o Lobby', action: 'leave', class: 'btn-danger' }
+                ]);
+            } else {
+                 ui.showAlert(gameOverMessage, [
+                    { text: 'OK', action: 'leave' }
+                 ]);
+            }
             break;
         case 'ROOM_REMOVED':
              if (ui.views.lobby.classList.contains('active')) {
@@ -100,9 +118,9 @@ export const ws = {
         }
         // Resetar estados
         Object.assign(state, {
-            gameState: {}, roomState: {}, myHand: [], pieceToPlayWithOptions: null
+            gameState: {}, roomState: {}, myHand: [], pieceToPlayWithOptions: null, gameEnded: false,
         });
-        ui.renderGameState(); // Limpa a UI
+        ui.renderLobbyState(); // Limpa a UI
         ui.showView('lobby');
         ui.renderRoomsList();
     }

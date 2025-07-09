@@ -1,6 +1,6 @@
 import { pool } from '../config/database';
 import { GameState, Domino, Player, PlacedDomino, BoardEnd, GameLogicResult, GameEvent, AuthenticatedWebSocket, PlayPieceMessage } from '../types';
-import { MIN_PLAYERS_TO_START, INITIAL_HAND_SIZE, TURN_DURATION } from '../config/gameConfig';
+import { MIN_PLAYERS_TO_START, INITIAL_HAND_SIZE, TURN_DURATION, MAX_PLAYERS } from '../config/gameConfig';
 import { sendToPlayer, broadcastToRoom, broadcastToLobby, sendError } from './gameUtils';
 import { SERVER_ID } from '../config/environment';
 import { memoryStore } from './memoryStore';
@@ -299,6 +299,7 @@ export async function startGame(roomId: string) {
     if (!room) return;
 
     room.status = 'playing';
+    room.readyPlayers.clear(); // Limpa o status de "pronto" ao iniciar um novo jogo
     memoryStore.saveRoom(roomId, room);
 
     broadcastToLobby({ type: 'ROOM_REMOVED', roomName: roomId });
@@ -344,8 +345,6 @@ export async function endGame(roomId: string, gameState: GameState, winner: Play
         Object.values(gameState.disconnectTimers).forEach(clearTimeout);
     }
     
-    broadcastToRoom(roomId, { type: 'JOGO_TERMINADO', winner: winner ? winner.username : 'Ninguém', reason });
-
     try {
         if(winner && winner.id.match(/^\d+$/)) {
             await pool.query(
@@ -357,9 +356,48 @@ export async function endGame(roomId: string, gameState: GameState, winner: Play
         console.error("Error saving match history:", e); 
     }
 
-    memoryStore.deleteGameState(roomId);
-    memoryStore.deleteRoom(roomId);
-    console.log(`[${SERVER_ID}] Sala ${roomId} e estado de jogo foram destruídos.`);
+    const room = memoryStore.getRoom(roomId);
+    const hostIsPresent = room && room.players.has(room.hostId!);
+
+    broadcastToRoom(roomId, {
+        type: 'JOGO_TERMINADO',
+        winner: winner ? winner.username : 'Ninguém',
+        reason,
+        canRematch: hostIsPresent
+    });
+
+    if (hostIsPresent) {
+        // Reset a sala para um potencial novo jogo
+        console.log(`[${SERVER_ID}] Sala ${roomId} está a ser resetada para um novo jogo.`);
+        memoryStore.deleteGameState(roomId);
+        
+        room.status = 'waiting';
+        room.readyPlayers.clear();
+        memoryStore.saveRoom(roomId, room);
+
+        // Envia todos os jogadores de volta para o estado de lobby da sala
+        broadcastToRoom(roomId, (clientInRoom) => {
+            return {
+                type: 'ROOM_STATE',
+                myId: clientInRoom.user.userId,
+                hostId: room.hostId,
+                players: Array.from(room.players).map(id => {
+                    const playerWs = clientsByUserId.get(id);
+                    const username = playerWs?.user?.username || `User-${id}`;
+                    return { id, username };
+                }),
+                readyPlayers: Array.from(room.readyPlayers),
+                playerCount: room.playerCount,
+                maxPlayers: MAX_PLAYERS,
+                status: room.status
+            };
+        });
+    } else {
+        // O anfitrião saiu, destrói a sala
+        console.log(`[${SERVER_ID}] Dono da sala ${roomId} não está presente. A sala será destruída.`);
+        memoryStore.deleteGameState(roomId);
+        memoryStore.deleteRoom(roomId);
+    }
 }
 
 export function handlePassTurn(initialGameState: GameState, userId: string, roomId: string, forceEndCheck = false): GameLogicResult {
@@ -470,7 +508,43 @@ export async function processGameLogicResult(result: GameLogicResult, roomId: st
     }
 }
 
-export function handlePlayerReady(gameState: GameState | null, userId: string, roomId: string): GameLogicResult {
-    // Esta função foi desativada juntamente com a funcionalidade de "rematch".
-    return { error: "Funcionalidade de Jogar Novamente desativada." };
+export function handlePlayerReady(userId: string, roomId: string): GameLogicResult {
+    const room = memoryStore.getRoom(roomId);
+    if (!room) {
+        return { error: 'Sala não encontrada.' };
+    }
+    if (room.status === 'playing') {
+        return { error: 'O jogo já está em andamento.' };
+    }
+
+    room.readyPlayers.add(userId);
+    console.log(`[${SERVER_ID}] Jogador ${userId} está pronto na sala ${roomId}. Prontos: ${room.readyPlayers.size}/${room.playerCount}`);
+    memoryStore.saveRoom(roomId, room);
+
+    // Notifica todos na sala sobre a mudança de estado
+    broadcastToRoom(roomId, (clientInRoom) => {
+        return {
+            type: 'ROOM_STATE',
+            myId: clientInRoom.user.userId,
+            hostId: room.hostId,
+            players: Array.from(room.players).map(id => {
+                const playerWs = clientsByUserId.get(id);
+                const username = playerWs?.user?.username || `User-${id}`;
+                return { id, username };
+            }),
+            readyPlayers: Array.from(room.readyPlayers),
+            playerCount: room.playerCount,
+            maxPlayers: MAX_PLAYERS,
+            status: room.status
+        };
+    });
+
+    // Verifica se todos estão prontos para iniciar o jogo
+    const activePlayersCount = room.players.size;
+    if (activePlayersCount >= MIN_PLAYERS_TO_START && room.readyPlayers.size === activePlayersCount) {
+        console.log(`[${SERVER_ID}] Todos os jogadores estão prontos em ${roomId}. A iniciar novo jogo.`);
+        startGame(roomId);
+    }
+
+    return {};
 }

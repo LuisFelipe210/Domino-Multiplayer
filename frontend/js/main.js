@@ -79,6 +79,10 @@ ui.startGameBtn.addEventListener('click', () => {
     }
 });
 
+ui.readyBtn.addEventListener('click', () => {
+    ws.sendMessage({ type: 'PLAYER_READY' });
+});
+
 ui.passTurnBtn.addEventListener('click', () => {
     if (state.gameState.turn === state.myId) {
         ws.sendMessage({ type: 'PASS_TURN' });
@@ -88,14 +92,12 @@ ui.passTurnBtn.addEventListener('click', () => {
 });
 
 ui.leaveGameBtn.addEventListener('click', () => {
-    if (confirm('Tem a certeza que quer abandonar a partida?')) {
+    const confirmationMessage = state.roomState.status === 'playing'
+        ? 'Tem a certeza que quer abandonar a partida? Isto contará como uma derrota.'
+        : 'Tem a certeza que quer sair da sala?';
+    if (confirm(confirmationMessage)) {
         ws.leaveRoom();
     }
-});
-
-// --- Event Listener do Modal ---
-ui.alertCloseBtn.addEventListener('click', () => {
-    ui.alertModal.style.display = 'none';
 });
 
 // --- Inicialização da Aplicação ---
