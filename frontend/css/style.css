@@ -264,3 +264,69 @@ input[type="text"]:focus, input[type="password"]:focus {
     font-size: 1.3rem;
 }
 #alert-message { color: #333; margin-bottom: 25px; }
+
+/* --- NOVOS ESTILOS PARA MODAL DE HISTÓRICO --- */
+.history-modal-content {
+    max-width: 700px;
+    width: 90%;
+}
+
+#history-list-container {
+    list-style-type: none;
+    padding: 0;
+    margin: 20px 0;
+    max-height: 60vh;
+    overflow-y: auto;
+    text-align: left;
+    border-top: 1px solid #ddd;
+    border-bottom: 1px solid #ddd;
+}
+
+.history-item {
+    padding: 15px 10px;
+    border-bottom: 1px solid #eee;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 15px;
+}
+
+.history-item:last-child {
+    border-bottom: none;
+}
+
+.history-item-info {
+    flex-grow: 1;
+}
+
+.history-item-info p {
+    margin: 2px 0;
+    font-size: 1rem;
+}
+
+.history-item-info .players-list {
+    font-size: 0.9rem;
+    color: #555;
+}
+
+.history-item-result {
+    font-weight: bold;
+    font-size: 1.1rem;
+    padding: 5px 10px;
+    border-radius: 5px;
+    text-align: center;
+    min-width: 80px;
+}
+
+.history-item-result.victory {
+    color: #27ae60;
+    background-color: #e8f5e9;
+}
+.history-item-result.defeat {
+    color: var(--danger-color);
+    background-color: #fbe9e7;
+}
+
+.modal-buttons {
+    margin-top: 20px;
+}

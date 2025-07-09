@@ -8,6 +8,7 @@ async function checkSessionAndStart() {
     try {
         const data = await api.checkForActiveGame();
         if (data.user && data.user.username) {
+            state.myId = data.user.userId;
             state.username = data.user.username;
             ui.showLoggedInHeader(state.username);
         }
@@ -21,6 +22,7 @@ async function checkSessionAndStart() {
         }
     } catch (error) {
         // Erro aqui geralmente significa token inválido ou expirado
+        state.myId = null;
         state.username = null;
         ui.showLoggedOutHeader();
         ui.showView('auth');
@@ -124,6 +126,20 @@ ui.leaveGameBtn.addEventListener('click', () => {
     if (confirm(confirmationMessage)) {
         ws.leaveRoom();
     }
+});
+
+// --- Event Listeners do Histórico ---
+ui.historyBtn.addEventListener('click', async () => {
+    try {
+        const history = await api.getMatchHistory();
+        ui.renderMatchHistory(history);
+    } catch (err) {
+        ui.showAlert(`Erro ao buscar histórico: ${err.message}`);
+    }
+});
+
+ui.historyCloseBtn.addEventListener('click', () => {
+    ui.historyModal.style.display = 'none';
 });
 
 // --- Inicialização da Aplicação ---

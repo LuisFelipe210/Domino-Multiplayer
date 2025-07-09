@@ -38,6 +38,11 @@ const elements = {
     alertModal: document.getElementById('alert-modal'),
     alertMessage: document.getElementById('alert-message'),
     alertModalButtons: document.getElementById('alert-modal-buttons'),
+    // Histórico
+    historyBtn: document.getElementById('history-btn'),
+    historyModal: document.getElementById('history-modal'),
+    historyListContainer: document.getElementById('history-list-container'),
+    historyCloseBtn: document.getElementById('history-close-btn'),
 };
 
 function createDominoElement(piece, isHand) {
@@ -334,5 +339,45 @@ export const ui = {
                 }
              });
         }
-    }
+    },
+
+    renderMatchHistory(history) {
+        this.historyListContainer.innerHTML = ''; // Limpa conteúdo anterior
+
+        if (!history || history.length === 0) {
+            this.historyListContainer.innerHTML = '<p style="text-align: center; padding: 20px;">Nenhuma partida encontrada no seu histórico.</p>';
+        } else {
+            history.forEach(match => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'history-item';
+
+                const isWinner = match.winner_username === state.username;
+                const wasInMatch = match.players.some(p => p.id === state.myId);
+                let resultText = 'Finalizada';
+                let resultClass = '';
+
+                if (wasInMatch && match.winner_username) {
+                    resultText = isWinner ? 'Vitória' : 'Derrota';
+                    resultClass = isWinner ? 'victory' : 'defeat';
+                }
+
+                const players = match.players.map(p => p.username).join(', ');
+                const date = new Date(match.finished_at).toLocaleString('pt-BR');
+
+                itemDiv.innerHTML = `
+                    <div class="history-item-info">
+                        <p><strong>Vencedor:</strong> ${match.winner_username || 'Ninguém (Empate)'}</p>
+                        <p class="players-list"><strong>Jogadores:</strong> ${players}</p>
+                        <p><strong>Data:</strong> ${date}</p>
+                    </div>
+                    <div class="history-item-result ${resultClass}">
+                        ${resultText}
+                    </div>
+                `;
+                this.historyListContainer.appendChild(itemDiv);
+            });
+        }
+
+        this.historyModal.style.display = 'flex';
+    },
 };

@@ -14,6 +14,7 @@
 <div class="main-container">
     <div id="user-info-header" style="display: none;">
         <span id="welcome-username"></span>
+        <button id="history-btn" class="btn btn-secondary">Histórico</button>
         <button id="logout-btn" class="btn btn-secondary">Logout</button>
     </div>
     
@@ -109,11 +110,26 @@
         </div>
     </div>
 </div>
+
+<!-- Modal de Histórico -->
+<div id="history-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content history-modal-content">
+        <h2>Histórico de Partidas</h2>
+        <div id="history-list-container">
+            <!-- Itens do histórico serão injetados aqui via JS -->
+        </div>
+        <div class="modal-buttons">
+            <button id="history-close-btn" class="btn">Fechar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Alerta -->
 <div id="alert-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content">
         <p id="alert-message"></p>
         <div id="alert-modal-buttons">
-             <button id="alert-close-btn" class.btn>OK</button>
+             <button id="alert-close-btn" class="btn">OK</button>
         </div>
     </div>
 </div>

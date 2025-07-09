@@ -50,5 +50,9 @@ export const api = {
     
     async checkForActiveGame() {
         return fetchAPI('/api/lobby/rejoin');
+    },
+
+    async getMatchHistory() {
+        return fetchAPI('/api/user/history');
     }
 };
