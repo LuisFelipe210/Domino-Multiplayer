@@ -1,6 +1,7 @@
 export const state = {
     ws: null,
     myId: null,
+    username: null,
     roomState: {},
     myHand: [],
     gameState: {},
@@ -9,4 +10,5 @@ export const state = {
     reconnectAttempts: 0,
     maxReconnectAttempts: 5,
     turnTimerInterval: null,
+    gameEnded: false,
 };

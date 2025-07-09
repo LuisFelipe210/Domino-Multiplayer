@@ -1,6 +1,6 @@
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
-import { PLAYERS_TO_START_GAME } from '../../config/gameConfig';
+import { MAX_PLAYERS } from '../../config/gameConfig';
 import { memoryStore, Room } from '../../websockets/memoryStore';
 
 export const listRooms = async (req: Request, res: Response) => {
@@ -11,7 +11,7 @@ export const listRooms = async (req: Request, res: Response) => {
             .map(room => ({
                 name: room.name,
                 playerCount: room.playerCount,
-                maxPlayers: PLAYERS_TO_START_GAME,
+                maxPlayers: MAX_PLAYERS,
                 hasPassword: room.hasPassword,
             }));
         res.json({ rooms: publicRooms });
@@ -48,7 +48,7 @@ export const joinRoom = async (req: Request, res: Response) => {
             memoryStore.saveRoom(roomName, newRoom);
             room = newRoom;
         } else {
-            if (room.status !== 'playing' && room.playerCount >= PLAYERS_TO_START_GAME) {
+            if (room.status !== 'playing' && room.playerCount >= MAX_PLAYERS) {
                 return res.status(403).json({ message: 'A sala está cheia.' });
             }
             if (room.passwordHash) {
@@ -75,18 +75,19 @@ export const joinRoom = async (req: Request, res: Response) => {
 
 export const rejoinGame = async (req: Request, res: Response) => {
     const userId = req.user!.userId;
+    const username = req.user!.username;
     
     try {
         const roomId = memoryStore.getRoomIdFromUser(String(userId));
         if (!roomId || !memoryStore.getGameState(roomId)) {
-             return res.json({ active_game: false });
+             return res.json({ active_game: false, user: { userId, username } });
         }
         
         console.log(`[Rejoin API] Utilizador ID ${req.user!.userId} encontrado no jogo ativo ${roomId}.`);
         const protocol = req.protocol === 'https' ? 'wss' : 'ws';
         const gameServerUrl = `${protocol}://${req.get('host')}/ws/game/${roomId}`;
         
-        res.json({ active_game: true, gameServerUrl });
+        res.json({ active_game: true, gameServerUrl, user: { userId, username } });
 
     } catch (error) {
         console.error(`Erro ao tentar reconectar utilizador ${userId}:`, error);

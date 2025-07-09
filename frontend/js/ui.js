@@ -17,6 +17,8 @@ const elements = {
     showRegisterLink: document.getElementById('show-register-link'),
     showLoginLink: document.getElementById('show-login-link'),
     logoutBtn: document.getElementById('logout-btn'),
+    userInfoHeader: document.getElementById('user-info-header'),
+    welcomeUsername: document.getElementById('welcome-username'),
     // Lobby
     joinRoomForm: document.getElementById('join-room-form'),
     roomsList: document.getElementById('rooms-list'),
@@ -30,11 +32,17 @@ const elements = {
     passTurnBtn: document.getElementById('pass-turn-btn'),
     leaveGameBtn: document.getElementById('leave-game-btn'),
     startGameBtn: document.getElementById('start-game-btn'),
+    readyBtn: document.getElementById('ready-btn'),
     playerHandContainer: document.getElementById('player-hand-container'),
     // Modal
     alertModal: document.getElementById('alert-modal'),
     alertMessage: document.getElementById('alert-message'),
-    alertCloseBtn: document.getElementById('alert-close-btn'),
+    alertModalButtons: document.getElementById('alert-modal-buttons'),
+    // Histórico
+    historyBtn: document.getElementById('history-btn'),
+    historyModal: document.getElementById('history-modal'),
+    historyListContainer: document.getElementById('history-list-container'),
+    historyCloseBtn: document.getElementById('history-close-btn'),
 };
 
 function createDominoElement(piece, isHand) {
@@ -62,10 +70,10 @@ function createDominoElement(piece, isHand) {
     dominoEl.appendChild(divider);
     dominoEl.appendChild(createHalf(piece.value2));
 
-    // Se a peça está na mão, a rotacionamos para a vertical
-    if (isHand) {
-        dominoEl.style.transform = 'rotate(90deg)';
-    }
+    // A linha abaixo foi REMOVIDA para que o CSS controle a rotação
+    // if (isHand) {
+    //     dominoEl.style.transform = 'rotate(90deg)';
+    // }
 
     return dominoEl;
 }
@@ -80,16 +88,51 @@ export const ui = {
     ...elements, // Expõe todos os elementos para o main.js
 
     showView(viewName) {
-        const isLoggedIn = !!document.cookie.split('; ').find(row => row.startsWith('token='));
         Object.values(this.views).forEach(v => v.classList.remove('active'));
         if (this.views[viewName]) {
             this.views[viewName].classList.add('active');
         }
-        this.logoutBtn.style.display = isLoggedIn && viewName !== 'auth' ? 'block' : 'none';
     },
 
-    showAlert(message) {
+    showLoggedInHeader(username) {
+        this.welcomeUsername.textContent = `Olá, ${username}`;
+        this.userInfoHeader.style.display = 'flex';
+    },
+
+    showLoggedOutHeader() {
+        this.userInfoHeader.style.display = 'none';
+    },
+
+    showAlert(message, buttons = [{ text: 'OK', action: 'close' }]) {
         this.alertMessage.textContent = message;
+        this.alertModalButtons.innerHTML = ''; // Limpa botões anteriores
+
+        buttons.forEach(btnInfo => {
+            const button = document.createElement('button');
+            button.textContent = btnInfo.text;
+            button.className = 'btn';
+            if (btnInfo.class) {
+                button.classList.add(btnInfo.class);
+            }
+            
+            button.onclick = () => {
+                this.alertModal.style.display = 'none'; // Sempre fecha o modal ao clicar
+                switch(btnInfo.action) {
+                    case 'rematch':
+                        ws.sendMessage({ type: 'PLAYER_READY' });
+                        break;
+                    case 'leave':
+                        ws.leaveRoom();
+                        break;
+                    case 'close':
+                    default:
+                        // Apenas fecha, não faz mais nada
+                        break;
+                }
+            };
+            this.alertModalButtons.appendChild(button);
+        });
+
         this.alertModal.style.display = 'flex';
     },
 
@@ -113,26 +156,51 @@ export const ui = {
     },
     
     renderLobbyState() {
-        const { roomState } = state;
-        this.gameStatusDiv.textContent = `A aguardar jogadores... ${roomState.playerCount} de 4`;
-        
-        if (roomState.hostId === state.myId && roomState.status === 'waiting') {
-            this.startGameBtn.style.display = 'block';
-            this.startGameBtn.disabled = roomState.playerCount < 2;
-        } else {
-            this.startGameBtn.style.display = 'none';
-        }
+        const { roomState, myId } = state;
 
         clearBoard();
         this.playerHandContainer.style.display = 'none';
         this.passTurnBtn.style.display = 'none';
         this.turnTimerDiv.style.display = 'none';
+        this.readyBtn.style.display = 'none';
+        this.startGameBtn.style.display = 'none';
+
+        if (!roomState || !roomState.players) return;
         
+        this.gameStatusDiv.textContent = `A aguardar jogadores... ${roomState.playerCount} de ${roomState.maxPlayers || 4}`;
+        
+        const isHost = roomState.hostId === myId;
+        const isReady = (roomState.readyPlayers || []).includes(myId);
+
+        if (roomState.status === 'waiting') {
+            if (state.gameEnded) { // Fluxo de Rematch
+                if (isReady) {
+                    this.readyBtn.style.display = 'block';
+                    this.readyBtn.textContent = 'A aguardar outros...';
+                    this.readyBtn.disabled = true;
+                } else {
+                    this.readyBtn.style.display = 'block';
+                    this.readyBtn.textContent = 'Estou Pronto!';
+                    this.readyBtn.disabled = false;
+                }
+            } else { // Lobby inicial
+                if (isHost) {
+                    this.startGameBtn.style.display = 'block';
+                    this.startGameBtn.disabled = roomState.playerCount < 2;
+                } else {
+                    const host = roomState.players.find(p => p.id === roomState.hostId);
+                    this.gameStatusDiv.textContent = `Aguardando o anfitrião (${host?.username || '...'}) iniciar o jogo.`;
+                }
+            }
+        }
+
         this.playersInfoDiv.innerHTML = '';
         (roomState.players || []).forEach(p => {
             const playerDiv = document.createElement('div');
             playerDiv.className = 'player-info';
-            playerDiv.textContent = `${p.username || `User ${p.id}`} ${p.id === roomState.hostId ? '⭐' : ''}`;
+            const readyMark = (roomState.readyPlayers || []).includes(p.id) ? '✅' : '';
+            const hostMark = p.id === roomState.hostId ? '⭐' : '';
+            playerDiv.textContent = `${p.username || `User ${p.id}`} ${hostMark} ${readyMark}`;
             this.playersInfoDiv.appendChild(playerDiv);
         });
     },
@@ -145,7 +213,9 @@ export const ui = {
             return;
         }
 
+        state.gameEnded = false;
         this.startGameBtn.style.display = 'none';
+        this.readyBtn.style.display = 'none';
 
         // --- Status e Controles ---
         if (gameState.isSpectator) {
@@ -153,11 +223,35 @@ export const ui = {
             this.playerHandContainer.style.display = 'none';
             this.passTurnBtn.style.display = 'none';
         } else {
+            const isMyTurn = gameState.turn === myId;
             const currentPlayer = gameState.players.find(p => p.id === gameState.turn);
-            this.gameStatusDiv.textContent = gameState.turn === myId ? "É a sua vez!" : `Aguardando a vez de ${currentPlayer?.username || '...'}`;
+            this.gameStatusDiv.textContent = isMyTurn ? "É a sua vez!" : `Aguardando a vez de ${currentPlayer?.username || '...'}`;
             this.playerHandContainer.style.display = 'block';
             this.passTurnBtn.style.display = 'inline-block';
-            this.passTurnBtn.disabled = gameState.turn !== myId;
+
+            if (!isMyTurn) {
+                this.passTurnBtn.disabled = true;
+            } else {
+                // É a minha vez, vamos verificar se tenho jogadas válidas.
+                const hasPlayablePiece = (() => {
+                    // Se não tiver mão, não pode jogar.
+                    if (!myHand || myHand.length === 0) return false;
+                    // Se o tabuleiro estiver vazio, qualquer peça é jogável.
+                    if (gameState.board.length === 0) return true;
+                    // Se não houver pontas ativas (jogo bloqueado), não pode jogar.
+                    if (!gameState.activeEnds || gameState.activeEnds.length === 0) return false;
+                    
+                    // Verifica se alguma peça na mão corresponde a alguma ponta ativa.
+                    return myHand.some(piece => 
+                        gameState.activeEnds.some(end => 
+                            piece.value1 === end.value || piece.value2 === end.value
+                        )
+                    );
+                })();
+
+                // Desativa o botão de passar se houver uma peça jogável.
+                this.passTurnBtn.disabled = hasPlayablePiece;
+            }
         }
 
         // --- Timer ---
@@ -245,5 +339,45 @@ export const ui = {
                 }
              });
         }
-    }
+    },
+
+    renderMatchHistory(history) {
+        this.historyListContainer.innerHTML = ''; // Limpa conteúdo anterior
+
+        if (!history || history.length === 0) {
+            this.historyListContainer.innerHTML = '<p style="text-align: center; padding: 20px;">Nenhuma partida encontrada no seu histórico.</p>';
+        } else {
+            history.forEach(match => {
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'history-item';
+
+                const isWinner = match.winner_username === state.username;
+                const wasInMatch = match.players.some(p => p.id === state.myId);
+                let resultText = 'Finalizada';
+                let resultClass = '';
+
+                if (wasInMatch && match.winner_username) {
+                    resultText = isWinner ? 'Vitória' : 'Derrota';
+                    resultClass = isWinner ? 'victory' : 'defeat';
+                }
+
+                const players = match.players.map(p => p.username).join(', ');
+                const date = new Date(match.finished_at).toLocaleString('pt-BR');
+
+                itemDiv.innerHTML = `
+                    <div class="history-item-info">
+                        <p><strong>Vencedor:</strong> ${match.winner_username || 'Ninguém (Empate)'}</p>
+                        <p class="players-list"><strong>Jogadores:</strong> ${players}</p>
+                        <p><strong>Data:</strong> ${date}</p>
+                    </div>
+                    <div class="history-item-result ${resultClass}">
+                        ${resultText}
+                    </div>
+                `;
+                this.historyListContainer.appendChild(itemDiv);
+            });
+        }
+
+        this.historyModal.style.display = 'flex';
+    },
 };

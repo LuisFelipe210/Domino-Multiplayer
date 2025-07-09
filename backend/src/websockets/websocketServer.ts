@@ -15,7 +15,7 @@ import {
 } from './gameHandler';
 import { handleGameMessage } from './messageHandler';
 import { AuthenticatedWebSocket, DecodedToken, GameState } from '../types';
-import { PLAYERS_TO_START_GAME, DISCONNECT_TIMEOUT } from '../config/gameConfig';
+import { MAX_PLAYERS } from '../config/gameConfig';
 import { JWT_SECRET, SERVER_ID } from '../config/environment';
 import { memoryStore, Room } from './memoryStore';
 import { broadcastToRoom, sendToPlayer, sendError } from './gameUtils';
@@ -56,32 +56,49 @@ export function initWebSocketServer(server: http.Server) {
         const userId = String(user.userId);
         const roomId = pathname.split('/').pop()!;
         
+        // NOVO: Lidar com conexões duplicadas. Se um usuário se conectar novamente,
+        // a conexão antiga é encerrada para garantir que apenas a mais recente seja usada.
+        if (clientsByUserId.has(userId)) {
+            console.log(`[${SERVER_ID}] Conexão duplicada detectada para o utilizador ID ${userId}. A encerrar a conexão antiga.`);
+            const oldWs = clientsByUserId.get(userId);
+            if (oldWs && oldWs !== ws) {
+                oldWs.terminate(); // Encerra a conexão antiga, o que acionará seu evento 'close'.
+            }
+        }
+        
         clientsByUserId.set(userId, ws); 
         roomsByClientId.set(ws, roomId);
         memoryStore.setUserRoom(userId, roomId);
         
-        console.log(`[${SERVER_ID}] Utilizador ID ${userId} conectou-se. Sala: ${roomId}. Clientes nesta instância: ${clientsByUserId.size}`);
+        console.log(`[${SERVER_ID}] Utilizador ID ${userId} (${user.username}) conectou-se. Sala: ${roomId}. Clientes nesta instância: ${clientsByUserId.size}`);
 
         const gameState = await getGameState(roomId);
         if (gameState) {
             const playerInGame = gameState.players.find(p => p.id === userId);
             
             if (playerInGame) { // Jogador está a reconectar
+                // O evento 'close' da conexão antiga pode ter marcado o jogador como desconectado.
+                // Esta lógica irá marcá-lo como reconectado.
                 if (playerInGame.disconnectedSince) {
                     console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} reconectou-se ao JOGO ${roomId}.`);
                     delete playerInGame.disconnectedSince;
                     clearDisconnectTimer(gameState, userId);
                     await saveGameState(roomId, gameState);
+                    // Notifica todos na sala que o jogador voltou.
+                    broadcastToRoom(roomId, { type: 'ESTADO_ATUALIZADO', ...getPublicState(gameState) });
                 }
                 
+                // Envia o estado completo, incluindo a mão do jogador.
                 sendToPlayer(userId, {
                     type: 'ESTADO_ATUALIZADO',
                     myId: userId,
                     ...getPublicState(gameState),
                     yourHand: gameState.hands[userId],
                 });
-                return;
-            } else { // NOVO: Jogador entra como OBSERVADOR
+                // MODIFICADO: O 'return' que existia aqui foi REMOVIDO.
+                // A sua remoção é a correção principal, permitindo que os handlers de 'message' e 'close'
+                // sejam adicionados abaixo, tornando o clique nas peças funcional novamente.
+            } else { // Jogador entra como OBSERVADOR
                 console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} entrou como OBSERVADOR na sala ${roomId}.`);
                 sendToPlayer(userId, {
                     type: 'ESTADO_ATUALIZADO',
@@ -108,8 +125,13 @@ export function initWebSocketServer(server: http.Server) {
                     type: 'ROOM_STATE',
                     myId: clientInRoom.user.userId,
                     hostId: room.hostId,
-                    players: Array.from(room.players).map(id => ({id, username: `User-${id}`})),
+                    players: Array.from(room.players).map(id => {
+                        const playerWs = clientsByUserId.get(id);
+                        const username = playerWs?.user?.username || `User-${id}`;
+                        return { id, username };
+                    }),
                     playerCount: room.playerCount,
+                    maxPlayers: MAX_PLAYERS,
                     status: room.status
                 };
             });
@@ -143,15 +165,26 @@ export function initWebSocketServer(server: http.Server) {
              if (currentGameState && currentGameState.players.find(p => p.id === userId)) {
                  const result = handleLeaveGame(ws, currentGameState, userId, false);
                  await processGameLogicResult(result, roomId, currentGameState);
-             } else if (room) {
-                 broadcastToRoom(roomId, {
-                    type: 'ROOM_STATE',
-                    hostId: room.hostId,
-                    players: Array.from(room.players).map(id => ({id, username: `User-${id}`})),
-                    playerCount: room.playerCount,
-                    status: room.status
+             } else if (room && room.playerCount > 0) { 
+                 broadcastToRoom(roomId, (clientInRoom) => {
+                    return {
+                        type: 'ROOM_STATE',
+                        myId: clientInRoom.user.userId,
+                        hostId: room.hostId,
+                        players: Array.from(room.players).map(id => {
+                            const playerWs = clientsByUserId.get(id);
+                            const username = playerWs?.user?.username || `User-${id}`;
+                            return { id, username };
+                        }),
+                        playerCount: room.playerCount,
+                        maxPlayers: MAX_PLAYERS,
+                        status: room.status
+                    };
                  });
-                 console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} desconectou-se do LOBBY da sala ${roomId}.`);
+                 console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} desconectou-se do LOBBY da sala ${roomId}. Estado atualizado enviado.`);
+             } else if (room && room.playerCount === 0) {
+                 memoryStore.deleteRoom(roomId);
+                 console.log(`[${SERVER_ID}] Sala do lobby ${roomId} ficou vazia e foi removida.`);
              }
         });
     });

@@ -3,6 +3,32 @@ import { ui } from './ui.js';
 import { api } from './api.js';
 import { ws } from './websocket.js';
 
+// --- Função auxiliar para verificar sessão e iniciar a UI ---
+async function checkSessionAndStart() {
+    try {
+        const data = await api.checkForActiveGame();
+        if (data.user && data.user.username) {
+            state.myId = data.user.userId;
+            state.username = data.user.username;
+            ui.showLoggedInHeader(state.username);
+        }
+
+        if (data.active_game) {
+            ui.showAlert('Reconectando a uma partida em andamento...');
+            ws.connect(data.gameServerUrl);
+        } else {
+            ui.showView('lobby');
+            ui.renderRoomsList();
+        }
+    } catch (error) {
+        // Erro aqui geralmente significa token inválido ou expirado
+        state.myId = null;
+        state.username = null;
+        ui.showLoggedOutHeader();
+        ui.showView('auth');
+    }
+}
+
 // --- Event Listeners de Autenticação e Navegação ---
 
 ui.loginForm.addEventListener('submit', async (e) => {
@@ -11,7 +37,7 @@ ui.loginForm.addEventListener('submit', async (e) => {
     const password = document.getElementById('login-password').value;
     try {
         await api.login(username, password);
-        await api.checkForActiveGame();
+        await checkSessionAndStart();
     } catch (err) {
         ui.showAlert(`Erro no login: ${err.message}`);
     }
@@ -40,6 +66,8 @@ ui.logoutBtn.addEventListener('click', async () => {
     }
     await api.logout();
     state.myId = null;
+    state.username = null;
+    ui.showLoggedOutHeader();
     ui.showView('auth');
 });
 
@@ -79,6 +107,10 @@ ui.startGameBtn.addEventListener('click', () => {
     }
 });
 
+ui.readyBtn.addEventListener('click', () => {
+    ws.sendMessage({ type: 'PLAYER_READY' });
+});
+
 ui.passTurnBtn.addEventListener('click', () => {
     if (state.gameState.turn === state.myId) {
         ws.sendMessage({ type: 'PASS_TURN' });
@@ -88,21 +120,34 @@ ui.passTurnBtn.addEventListener('click', () => {
 });
 
 ui.leaveGameBtn.addEventListener('click', () => {
-    if (confirm('Tem a certeza que quer abandonar a partida?')) {
+    const confirmationMessage = state.roomState.status === 'playing'
+        ? 'Tem a certeza que quer abandonar a partida? Isto contará como uma derrota.'
+        : 'Tem a certeza que quer sair da sala?';
+    if (confirm(confirmationMessage)) {
         ws.leaveRoom();
     }
 });
 
-// --- Event Listener do Modal ---
-ui.alertCloseBtn.addEventListener('click', () => {
-    ui.alertModal.style.display = 'none';
+// --- Event Listeners do Histórico ---
+ui.historyBtn.addEventListener('click', async () => {
+    try {
+        const history = await api.getMatchHistory();
+        ui.renderMatchHistory(history);
+    } catch (err) {
+        ui.showAlert(`Erro ao buscar histórico: ${err.message}`);
+    }
+});
+
+ui.historyCloseBtn.addEventListener('click', () => {
+    ui.historyModal.style.display = 'none';
 });
 
 // --- Inicialização da Aplicação ---
 window.addEventListener('load', () => {
     if (document.cookie.includes('token=')) {
-        api.checkForActiveGame();
+        checkSessionAndStart();
     } else {
+        ui.showLoggedOutHeader();
         ui.showView('auth');
     }
 });

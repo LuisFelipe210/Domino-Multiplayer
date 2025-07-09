@@ -5,6 +5,7 @@ import path from 'path';
 
 import authRoutes from './api/routes/auth.routes';
 import lobbyRoutes from './api/routes/lobby.routes';
+import userRoutes from './api/routes/user.routes';
 import { initWebSocketServer } from './websockets/websocketServer';
 
 const app = express();
@@ -19,6 +20,7 @@ app.use(express.static(frontendPath));
 // Rotas da API
 app.use('/api/auth', authRoutes);
 app.use('/api/lobby', lobbyRoutes);
+app.use('/api/user', userRoutes);
 
 // Rota de fallback para servir o index.html
 app.get('*', (req, res, next) => {

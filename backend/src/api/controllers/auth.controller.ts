@@ -57,7 +57,7 @@ export const login = async (req: Request, res: Response) => {
         res.status(200).json({ 
             success: true, 
             user: {
-                id: user.id,
+                userId: String(user.id),
                 username: user.username
             }
         });

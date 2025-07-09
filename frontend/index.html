@@ -12,7 +12,11 @@
 <body>
 
 <div class="main-container">
-    <button id="logout-btn" class="btn btn-secondary btn-logout" style="display: none;">Logout</button>
+    <div id="user-info-header" style="display: none;">
+        <span id="welcome-username"></span>
+        <button id="history-btn" class="btn btn-secondary">Histórico</button>
+        <button id="logout-btn" class="btn btn-secondary">Logout</button>
+    </div>
     
     <!-- Auth View (Login / Register) -->
     <div id="auth-view" class="view active">
@@ -82,33 +86,61 @@
     <!-- Game View -->
     <div id="game-view" class="view">
         <div class="game-container">
-            <div id="game-status">A aguardar jogadores...</div>
-            <button id="start-game-btn" class="btn" style="display: none; margin: 10px auto;">Iniciar Jogo</button>
-            <div id="turn-timer"></div>
-            
-            <div id="players-info-container">
-                <h3>Jogadores</h3>
-                <div id="players-info"></div>
+            <!-- Game Header: Status and Pre-Game buttons -->
+            <div class="game-header">
+                <div id="game-status">A aguardar jogadores...</div>
+                <button id="start-game-btn" class="btn" style="display: none;">Iniciar Jogo</button>
+                <button id="ready-btn" class="btn" style="display: none;">Estou Pronto!</button>
+                <div id="turn-timer"></div>
             </div>
 
-            <div id="game-board"></div>
+            <!-- Main Game Area: Board on the left, sidebar on the right -->
+            <div class="game-body">
+                <div id="game-board-container"> <!-- Wrapper for the board -->
+                    <div id="game-board"></div>
+                </div>
 
+                <div class="game-sidebar"> <!-- Sidebar for info and controls -->
+                    <div id="players-info-container">
+                        <h3>Jogadores</h3>
+                        <div id="players-info"></div>
+                    </div>
+                    <div id="game-controls">
+                        <button id="pass-turn-btn" class="btn btn-secondary" style="display: none;">Passar a Vez</button>
+                        <button id="leave-game-btn" class="btn btn-danger">Sair da Sala</button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Player's hand at the bottom -->
             <div id="player-hand-container" style="display: none;">
                 <h3>A sua mão</h3>
                 <div id="player-hand"></div>
             </div>
-            
-            <div id="game-controls">
-                <button id="pass-turn-btn" class="btn btn-secondary" style="display: none;">Passar a Vez</button>
-                <button id="leave-game-btn" class="btn btn-danger">Sair da Sala</button>
-            </div>
         </div>
     </div>
 </div>
+
+<!-- Modal de Histórico -->
+<div id="history-modal" class="modal-overlay" style="display: none;">
+    <div class="modal-content history-modal-content">
+        <h2>Histórico de Partidas</h2>
+        <div id="history-list-container">
+            <!-- Itens do histórico serão injetados aqui via JS -->
+        </div>
+        <div class="modal-buttons">
+            <button id="history-close-btn" class="btn">Fechar</button>
+        </div>
+    </div>
+</div>
+
+<!-- Modal de Alerta -->
 <div id="alert-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content">
         <p id="alert-message"></p>
-        <button id="alert-close-btn" class="btn">OK</button>
+        <div id="alert-modal-buttons">
+             <button id="alert-close-btn" class="btn">OK</button>
+        </div>
     </div>
 </div>
 
