@@ -13,6 +13,7 @@ const app = express();
 // Middlewares
 app.use(express.json());
 app.use(cookieParser());
+app.set('trust proxy', 1);
 
 const frontendPath = path.join(__dirname, '../frontend');
 app.use(express.static(frontendPath));
