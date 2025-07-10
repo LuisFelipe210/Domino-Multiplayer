@@ -1,6 +1,22 @@
 version: '3.8'
 
 services:
+  nginx:
+    image: nginx:latest
+    container_name: nginx
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/conf.d/default.conf
+      - ./certbot/www:/var/www/certbot
+      - ./certbot/conf:/etc/letsencrypt
+      - ./frontend:/var/www/html
+    depends_on:
+      - backend
+    networks:
+      - game-network
+
   postgres:
     image: postgres:13
     container_name: domino-postgres
@@ -20,25 +36,24 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - game-network
 
   backend:
     build:
       context: ./backend
     container_name: backend-server
-    ports:
-      - "80:4000"
-    environment:
-      - PORT=4000
-      - SERVER_ID=main-server
-      - DATABASE_URL=postgresql://${POSTGRES_USER}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB}
-      - JWT_SECRET=${JWT_SECRET}
-    volumes:
-      - ./frontend:/usr/src/app/frontend 
-    # MODIFICADO: Altera a dependência para aguardar o estado 'healthy'
+    env_file:
+      - .env
     depends_on:
       postgres:
         condition: service_healthy
     restart: unless-stopped
+    networks:
+      - game-network
 
 volumes:
   postgres_data:
+
+networks:
+  game-network:
