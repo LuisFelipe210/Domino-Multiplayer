@@ -1,6 +1,6 @@
 import { pool } from '../config/database';
 import { GameState, Domino, Player, PlacedDomino, BoardEnd, GameLogicResult, GameEvent, AuthenticatedWebSocket, PlayPieceMessage } from '../types';
-import { MIN_PLAYERS_TO_START, INITIAL_HAND_SIZE, TURN_DURATION, MAX_PLAYERS } from '../config/gameConfig';
+import { MIN_PLAYERS_TO_START, INITIAL_HAND_SIZE, TURN_DURATION, MAX_PLAYERS, BOARD_WIDTH_UNITS, BOARD_HEIGHT_UNITS } from '../config/gameConfig';
 import { sendToPlayer, broadcastToRoom, broadcastToLobby, sendError } from './gameUtils';
 import { SERVER_ID } from '../config/environment';
 import { memoryStore } from './memoryStore';
@@ -164,11 +164,9 @@ export function handlePlayPiece(initialGameState: GameState, userId: string, dat
     const pieceWidthUnits = 2;  // largura de uma peça é 2 unidades (72px)
 
     if (initialGameState.board.length === 0) {
-        // Rotação: 0 para normal (horizontal), 90 para bucha (vertical)
         const rotation = isDouble ? 90 : 0;
         newPlacedPiece = { piece: pieceToPlay, x: 0, y: 0, rotation: rotation as any };
         
-        // As pontas consideram a orientação
         const width = isDouble ? pieceHeightUnits : pieceWidthUnits;
         const leftEndPos = -width / 2;
         const rightEndPos = width / 2;
@@ -204,34 +202,68 @@ export function handlePlayPiece(initialGameState: GameState, userId: string, dat
             return { error: 'A ponta escolhida não é válida.' };
         }
 
-        const isRightEnd = targetEnd.attachDirection === 0;
+        // --- LÓGICA DE POSICIONAMENTO E ROTAÇÃO REATORADA ---
 
-        if ((isRightEnd && pieceToPlay.value1 !== targetEnd.value) || (!isRightEnd && pieceToPlay.value2 !== targetEnd.value)) {
-            [pieceToPlay.value1, pieceToPlay.value2] = [pieceToPlay.value2, pieceToPlay.value1];
+        // 1. Determina a direção final da jogada, verificando colisões com as bordas.
+        let newEndAttachDirection = targetEnd.attachDirection;
+        const collisionMargin = 1.5;
+
+        // Calcula a posição da nova ponta *se não houvesse virada* para checar colisão.
+        if (newEndAttachDirection === 0 && (targetEnd.x + pieceWidthUnits > (BOARD_WIDTH_UNITS / 2) - collisionMargin)) newEndAttachDirection = 90; // Direita -> Vira para Baixo
+        else if (newEndAttachDirection === 180 && (targetEnd.x - pieceWidthUnits < (-BOARD_WIDTH_UNITS / 2) + collisionMargin)) newEndAttachDirection = 270; // Esquerda -> Vira para Cima
+        else if (newEndAttachDirection === 90 && (targetEnd.y + pieceWidthUnits > (BOARD_HEIGHT_UNITS / 2) - collisionMargin)) newEndAttachDirection = 180; // Baixo -> Vira para Esquerda
+        else if (newEndAttachDirection === 270 && (targetEnd.y - pieceWidthUnits < (-BOARD_HEIGHT_UNITS / 2) + collisionMargin)) newEndAttachDirection = 0; // Cima -> Vira para Direita
+
+        // 2. Determina a rotação final da peça com base na direção final e se é uma bucha.
+        const finalIsHorizontal = newEndAttachDirection === 0 || newEndAttachDirection === 180;
+        const rotation: 0 | 90 | 180 | 270 = isDouble
+            ? (finalIsHorizontal ? 90 : 0) // Buchas são perpendiculares à linha de jogo.
+            : (finalIsHorizontal ? 0 : 90); // Peças normais são paralelas.
+
+        // 3. Determina as dimensões da peça no tabuleiro com base na sua rotação final.
+        const pieceIsRotatedVertically = rotation === 90 || rotation === 270;
+        const pieceWidthOnBoard = pieceIsRotatedVertically ? pieceHeightUnits : pieceWidthUnits;
+        const pieceHeightOnBoard = pieceIsRotatedVertically ? pieceWidthUnits : pieceHeightUnits;
+        
+        // 4. Calcula a posição final da peça e da nova ponta.
+        let newPieceX, newPieceY, newEndX, newEndY;
+        const sign = (newEndAttachDirection === 0 || newEndAttachDirection === 90) ? 1 : -1;
+
+        if (finalIsHorizontal) { // Jogada na horizontal (esquerda ou direita)
+            const pieceCenterOffset = pieceWidthOnBoard / 2;
+            newPieceX = targetEnd.x + (sign * pieceCenterOffset);
+            newPieceY = targetEnd.y;
+            newEndX = newPieceX + (sign * pieceCenterOffset);
+            newEndY = newPieceY;
+        } else { // Jogada na vertical (cima ou baixo)
+            const pieceCenterOffset = pieceHeightOnBoard / 2;
+            newPieceX = targetEnd.x;
+            newPieceY = targetEnd.y + (sign * pieceCenterOffset);
+            newEndX = newPieceX;
+            newEndY = newPieceY + (sign * pieceCenterOffset);
+        }
+
+        // 5. Orienta os valores da peça para corresponder à ponta de conexão.
+        const isGrowingDirection = newEndAttachDirection === 0 || newEndAttachDirection === 90;
+        if (isGrowingDirection) { // Direita ou Baixo
+            if (pieceToPlay.value1 !== targetEnd.value) {
+                [pieceToPlay.value1, pieceToPlay.value2] = [pieceToPlay.value2, pieceToPlay.value1];
+            }
+        } else { // Esquerda ou Cima
+            if (pieceToPlay.value2 !== targetEnd.value) {
+                [pieceToPlay.value1, pieceToPlay.value2] = [pieceToPlay.value2, pieceToPlay.value1];
+            }
         }
         
-        const rotation = isDouble ? 90 : 0;
-        
-        // A largura da peça no tabuleiro depende se é bucha ou não
-        const widthOnBoard = isDouble ? pieceHeightUnits : pieceWidthUnits;
-        const pieceCenterOffset = widthOnBoard / 2;
-
-        const newPieceX = isRightEnd 
-            ? targetEnd.x + pieceCenterOffset 
-            : targetEnd.x - pieceCenterOffset;
-            
-        newPlacedPiece = { piece: pieceToPlay, x: newPieceX, y: 0, rotation: rotation as any };
-        
-        const newEndX = isRightEnd
-            ? newPieceX + pieceCenterOffset
-            : newPieceX - pieceCenterOffset;
-
+        // 6. Cria a nova peça posicionada e a nova ponta ativa.
+        newPlacedPiece = { piece: pieceToPlay, x: newPieceX, y: newPieceY, rotation };
+        const newEndValue = isGrowingDirection ? pieceToPlay.value2 : pieceToPlay.value1;
         const newEnd: BoardEnd = {
             id: `end-${Date.now()}`,
-            value: isRightEnd ? pieceToPlay.value2 : pieceToPlay.value1,
+            value: newEndValue,
             x: newEndX,
-            y: 0,
-            attachDirection: targetEnd.attachDirection
+            y: newEndY,
+            attachDirection: newEndAttachDirection
         };
 
         nextActiveEnds = [...initialGameState.activeEnds.filter(e => e.id !== targetEnd.id), newEnd];
@@ -244,7 +276,7 @@ export function handlePlayPiece(initialGameState: GameState, userId: string, dat
         ...initialGameState,
         board: [...initialGameState.board, newPlacedPiece],
         activeEnds: nextActiveEnds,
-        occupiedCells: { ...initialGameState.occupiedCells, [`${Math.round(newPlacedPiece.x)},0`]: true },
+        occupiedCells: { ...initialGameState.occupiedCells, [`${Math.round(newPlacedPiece.x)},${Math.round(newPlacedPiece.y)}`]: true },
         hands: {
             ...initialGameState.hands,
             [userId]: newHand
@@ -308,7 +340,7 @@ export async function startGame(roomId: string) {
     const players: Player[] = [];
     for (const id of playerIds) {
         const ws = clientsByUserId.get(id);
-        const username = ws?.user?.username || `User-${id}`; // MODIFICADO: Usa o nome de utilizador real
+        const username = ws?.user?.username || `User-${id}`; 
         players.push({ id, username });
     }
 
