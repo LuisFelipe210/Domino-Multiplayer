@@ -32,7 +32,7 @@ body {
     max-width: 1200px;
     background-color: var(--paper-bg);
     border-radius: 12px;
-    padding: 40px;
+    padding: 30px;
     position: relative;
     box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
     background-image: repeating-linear-gradient(var(--paper-bg) 0px, var(--paper-bg) 23px, var(--line-color) 24px);
@@ -189,7 +189,7 @@ input[type="text"]:focus, input[type="password"]:focus {
 
 #game-status {
     text-align: center; font-size: 1.5em; font-weight: bold;
-    margin-bottom: 10px; padding: 10px; background: #ecf0f1;
+    margin-bottom: 10px; padding: 10px;
     color: #333; border-radius: 5px;
 }
 #turn-timer {
