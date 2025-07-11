@@ -7,6 +7,7 @@
     --accent-hover: #2980b9;
     --danger-color: #e74c3c;
     --danger-hover: #c0392b;
+    --glow-color: #2ecc71; /* Cor para o brilho */
 }
 
 * {
@@ -29,7 +30,7 @@ body {
 
 .main-container {
     width: 100%;
-    max-width: 1200px;
+    max-width: 1400px; /* Aumentado de 1200px para 1400px */
     background-color: var(--paper-bg);
     border-radius: 12px;
     padding: 30px;
@@ -147,6 +148,23 @@ input[type="text"]:focus, input[type="password"]:focus {
 #rooms-list li { background: #f8f9fa; padding: 10px; border-bottom: 1px solid #dee2e6; margin-bottom: 5px; border-radius: 4px; }
 #rooms-list li:last-child { border-bottom: none; }
 
+/* NOVOS ESTILOS PARA AS SALAS */
+#rooms-list li.room-waiting {
+    background-color: #e6ffe6; /* Verde claro */
+    border-color: #28a745;     /* Borda verde */
+    color: #218838;
+    font-weight: bold;
+}
+
+#rooms-list li.room-playing {
+    background-color: #ffe6e6; /* Vermelho claro */
+    border-color: #dc3545;     /* Borda vermelha */
+    color: #c82333;
+    font-weight: bold;
+    opacity: 0.8; /* Levemente opaco para indicar que está em jogo */
+}
+/* FIM DOS NOVOS ESTILOS PARA AS SALAS */
+
 /* NOVO: Layout específico para a Game View */
 #game-view .game-container {
     display: flex;
@@ -192,7 +210,14 @@ input[type="text"]:focus, input[type="password"]:focus {
     margin-bottom: 10px; padding: 10px;
     color: #333; border-radius: 5px;
 }
-#turn-timer {
+/* Estilo para o timer na mesma linha do status */
+.turn-timer-display {
+    font-size: 0.9em; /* Ligeiramente menor que o texto principal */
+    font-weight: normal;
+    margin-left: 10px;
+}
+
+#turn-timer { /* Este elemento agora está oculto e seu conteúdo é movido para #game-status */
     text-align: center; font-size: 1.5em; font-weight: bold;
     margin-bottom: 10px; display: none;
 }
@@ -417,4 +442,57 @@ input[type="text"]:focus, input[type="password"]:focus {
 
 .modal-buttons {
     margin-top: 20px;
+}
+
+@keyframes glow-pulse {
+    0% {
+        box-shadow: 0 0 5px var(--glow-color), 0 0 10px var(--glow-color);
+    }
+    50% {
+        box-shadow: 0 0 15px var(--glow-color), 0 0 25px var(--glow-color), 0 0 35px var(--glow-color);
+    }
+    100% {
+        box-shadow: 0 0 5px var(--glow-color), 0 0 10px var(--glow-color);
+    }
+}
+
+.my-turn-highlight {
+    animation: glow-pulse 1.5s infinite alternate; /* Aplica a animação */
+    border: 3px solid var(--glow-color) !important; /* Adiciona uma borda para mais clareza */
+}  
+
+/* Loading Overlay */
+#loading-overlay {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-color: rgba(0, 0, 0, 0.8);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    color: white;
+    font-size: 1.5em;
+    z-index: 1000; /* Garante que fique acima de tudo */
+}
+
+#loading-overlay.hidden {
+    display: none;
+}
+
+.spinner {
+    border: 4px solid rgba(255, 255, 255, 0.3);
+    border-top: 4px solid #fff;
+    border-radius: 50%;
+    width: 50px;
+    height: 50px;
+    animation: spin 1s linear infinite;
+    margin-bottom: 20px;
+}
+
+@keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
 }

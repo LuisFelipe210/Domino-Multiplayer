@@ -1,4 +1,4 @@
-export const MIN_PLAYERS_TO_START = 2;
+export const MIN_PLAYERS_TO_START = 4;
 export const MAX_PLAYERS = 4;
 export const INITIAL_HAND_SIZE = 7;
 export const LOCK_EXPIRATION = 10; 

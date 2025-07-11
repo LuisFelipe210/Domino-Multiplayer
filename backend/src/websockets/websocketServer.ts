@@ -57,62 +57,66 @@ export function initWebSocketServer(server: http.Server) {
         const encodedRoomId = pathname.split('/').pop()!;
         const roomId = decodeURIComponent(encodedRoomId);
         
-        // NOVO: Lidar com conexões duplicadas. Se um usuário se conectar novamente,
-        // a conexão antiga é encerrada para garantir que apenas a mais recente seja usada.
+        // Handle duplicate connections: terminate old connection to ensure only the latest is used.
         if (clientsByUserId.has(userId)) {
             console.log(`[${SERVER_ID}] Conexão duplicada detectada para o utilizador ID ${userId}. A encerrar a conexão antiga.`);
             const oldWs = clientsByUserId.get(userId);
             if (oldWs && oldWs !== ws) {
-                oldWs.terminate(); // Encerra a conexão antiga, o que acionará seu evento 'close'.
+                // Terminating oldWs will trigger its 'close' event, which will handle marking it disconnected.
+                oldWs.terminate(); 
             }
         }
         
         clientsByUserId.set(userId, ws); 
         roomsByClientId.set(ws, roomId);
-        memoryStore.setUserRoom(userId, roomId);
+        memoryStore.setUserRoom(userId, roomId); // Set user's room mapping immediately
         
         console.log(`[${SERVER_ID}] Utilizador ID ${userId} (${user.username}) conectou-se. Sala: ${roomId}. Clientes nesta instância: ${clientsByUserId.size}`);
 
         const gameState = await getGameState(roomId);
-        if (gameState) {
+        let room = memoryStore.getRoom(roomId); // Get room info even if game state exists
+        
+        if (!room) { // Room does not exist at all (e.g., deleted due to inactivity or host leaving)
+            sendError(ws, `A sala ${roomId} não foi encontrada ou foi fechada.`);
+            ws.close();
+            memoryStore.deleteUserFromRoom(userId, roomId); // Clean up userToRoomMap if still there
+            return;
+        }
+
+        if (gameState) { // There is an active game in this room
             const playerInGame = gameState.players.find(p => p.id === userId);
             
-            if (playerInGame) { // Jogador está a reconectar
-                // O evento 'close' da conexão antiga pode ter marcado o jogador como desconectado.
-                // Esta lógica irá marcá-lo como reconectado.
+            if (playerInGame) { // Player is re-connecting to an active game
                 if (playerInGame.disconnectedSince) {
                     console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} reconectou-se ao JOGO ${roomId}.`);
                     delete playerInGame.disconnectedSince;
                     clearDisconnectTimer(gameState, userId);
                     await saveGameState(roomId, gameState);
-                    // Notifica todos na sala que o jogador voltou.
+                    // Broadcast updated game state to show player reconnected
                     broadcastToRoom(roomId, { type: 'ESTADO_ATUALIZADO', ...getPublicState(gameState) });
                 }
                 
-                // Envia o estado completo, incluindo a mão do jogador.
+                // Send full game state to the reconnected player
                 sendToPlayer(userId, {
                     type: 'ESTADO_ATUALIZADO',
                     myId: userId,
                     ...getPublicState(gameState),
                     yourHand: gameState.hands[userId],
                 });
-                // MODIFICADO: O 'return' que existia aqui foi REMOVIDO.
-                // A sua remoção é a correção principal, permitindo que os handlers de 'message' e 'close'
-                // sejam adicionados abaixo, tornando o clique nas peças funcional novamente.
-            } else { // Jogador entra como OBSERVADOR
-                console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} entrou como OBSERVADOR na sala ${roomId}.`);
-                sendToPlayer(userId, {
-                    type: 'ESTADO_ATUALIZADO',
-                    myId: userId,
-                    ...getPublicState(gameState),
-                    yourHand: [], // Observadores não têm mão
-                    isSpectator: true,
-                });
+            } else { // Game is active, but this user is not a player in it
+                console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} tentou entrar na sala ${roomId} em jogo, mas não é um jogador.`);
+                sendError(ws, "Não é possível entrar em um jogo já em andamento.");
+                ws.close();
+                memoryStore.deleteUserFromRoom(userId, roomId); // Clean up userToRoomMap for observers/non-players
+                return;
             }
-        } else {
-            let room = memoryStore.getRoom(roomId);
-            if (!room) {
-                return sendError(ws, `A sala ${roomId} não foi encontrada ou foi fechada.`);
+        } else { // No active game state, so it's a lobby room
+            // If room status is 'playing' but there's no gameState, it's an inconsistent state
+            if (room.status === 'playing' && !room.players.has(userId)) {
+                 sendError(ws, "Não é possível entrar em um jogo já em andamento.");
+                 ws.close();
+                 memoryStore.deleteUserFromRoom(userId, roomId); // Clean up userToRoomMap if trying to join a playing room
+                 return;
             }
 
             room.players.add(userId);
@@ -121,30 +125,32 @@ export function initWebSocketServer(server: http.Server) {
 
             console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} entrou no LOBBY da sala ${roomId}. Jogadores na sala: ${room.playerCount}`);
             
+            // Broadcast room state to all clients in this lobby room
             broadcastToRoom(roomId, (clientInRoom) => {
+                const playersInRoom = Array.from(room!.players).map(id => {
+                    const playerWs = clientsByUserId.get(id);
+                    const username = playerWs?.user?.username || `User-${id}`;
+                    const isReady = room!.readyPlayers.has(id);
+                    return { id, username, isReady }; // Include isReady status
+                });
                 return {
                     type: 'ROOM_STATE',
                     myId: clientInRoom.user.userId,
-                    hostId: room.hostId,
-                    players: Array.from(room.players).map(id => {
-                        const playerWs = clientsByUserId.get(id);
-                        const username = playerWs?.user?.username || `User-${id}`;
-                        return { id, username };
-                    }),
-                    playerCount: room.playerCount,
+                    hostId: room!.hostId,
+                    players: playersInRoom,
+                    readyPlayers: Array.from(room!.readyPlayers),
+                    playerCount: room!.playerCount,
                     maxPlayers: MAX_PLAYERS,
-                    status: room.status
+                    status: room!.status
                 };
             });
         }
         
         ws.on('message', async (message) => {
             const currentGameState = await getGameState(roomId);
-            if (currentGameState) {
-                const isPlayer = currentGameState.players.some(p => p.id === userId);
-                if (!isPlayer) {
-                    return sendError(ws, "Observadores não podem realizar ações.");
-                }
+            // Ensure the user sending message is a player in an active game, if a game state exists.
+            if (currentGameState && !currentGameState.players.some(p => p.id === userId)) {
+                return sendError(ws, "Você não é um jogador nesta partida.");
             }
             handleGameMessage(ws, message, roomId);
         });
@@ -153,39 +159,71 @@ export function initWebSocketServer(server: http.Server) {
              clientsByUserId.delete(userId);
              roomsByClientId.delete(ws);
              
-             const room = memoryStore.getRoom(roomId);
-             if (room) {
-                 room.players.delete(userId);
-                 room.playerCount = room.players.size;
-                 memoryStore.saveRoom(roomId, room);
-             }
-             
              console.log(`[${SERVER_ID}] Utilizador ID ${userId} desconectou-se. Clientes nesta instância: ${clientsByUserId.size}`);
              
              const currentGameState = await getGameState(roomId);
              if (currentGameState && currentGameState.players.find(p => p.id === userId)) {
+                 // Player was in an active game. Mark them as disconnected, but DO NOT remove from room.players.
+                 // The 'disconnectedSince' logic in handleLeaveGame and gameHandler.ts manages temporary disconnections.
                  const result = handleLeaveGame(ws, currentGameState, userId, false);
                  await processGameLogicResult(result, roomId, currentGameState);
-             } else if (room && room.playerCount > 0) { 
-                 broadcastToRoom(roomId, (clientInRoom) => {
-                    return {
-                        type: 'ROOM_STATE',
-                        myId: clientInRoom.user.userId,
-                        hostId: room.hostId,
-                        players: Array.from(room.players).map(id => {
-                            const playerWs = clientsByUserId.get(id);
-                            const username = playerWs?.user?.username || `User-${id}`;
-                            return { id, username };
-                        }),
-                        playerCount: room.playerCount,
-                        maxPlayers: MAX_PLAYERS,
-                        status: room.status
-                    };
-                 });
-                 console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} desconectou-se do LOBBY da sala ${roomId}. Estado atualizado enviado.`);
-             } else if (room && room.playerCount === 0) {
-                 memoryStore.deleteRoom(roomId);
-                 console.log(`[${SERVER_ID}] Sala do lobby ${roomId} ficou vazia e foi removida.`);
+
+                 // After processing, broadcast updated room state (player list with disconnected status)
+                 // to other players in the room, so they see the disconnection.
+                 const roomAfterLeave = memoryStore.getRoom(roomId); // Get updated room after handleLeaveGame logic
+                 if (roomAfterLeave) {
+                     broadcastToRoom(roomId, (clientInRoom) => {
+                        const playersForBroadcast = Array.from(roomAfterLeave.players).map(pId => {
+                            const playerWs = clientsByUserId.get(pId);
+                            const username = playerWs?.user?.username || `User-${pId}`;
+                            // Find the player in the currentGameState (which was potentially updated by handleLeaveGame)
+                            const playerState = currentGameState.players.find(p => p.id === pId);
+                            return { id: pId, username, disconnectedSince: playerState?.disconnectedSince };
+                        });
+                        return {
+                            type: 'ESTADO_ATUALIZADO', // Broadcast as ESTADO_ATUALIZADO for game players
+                            myId: clientInRoom.user.userId,
+                            ...getPublicState(currentGameState), // Reuse public state but update players list
+                            players: playersForBroadcast // Ensure disconnected status is reflected
+                        };
+                     });
+                 }
+
+             } else { // Player was in a lobby room OR game ended and room was already removed
+                      // In this case, it's safe to fully remove the user from the room data.
+                const room = memoryStore.getRoom(roomId);
+                if (room) {
+                    memoryStore.deleteUserFromRoom(userId, roomId); // Safely remove from room players and userToRoomMap
+                    if (room.playerCount === 0) { // Check playerCount after deleting the user
+                        memoryStore.deleteRoom(roomId);
+                        console.log(`[${SERVER_ID}] Sala do lobby ${roomId} ficou vazia e foi removida.`);
+                    } else {
+                        // Broadcast updated room state for lobby clients
+                        broadcastToRoom(roomId, (clientInRoom) => {
+                           const playersInRoom = Array.from(room!.players).map(id => {
+                               const playerWs = clientsByUserId.get(id);
+                               const username = playerWs?.user?.username || `User-${id}`;
+                               const isReady = room!.readyPlayers.has(id);
+                               return { id, username, isReady };
+                           });
+                           return {
+                               type: 'ROOM_STATE', // Send ROOM_STATE for lobby players
+                               myId: clientInRoom.user.userId,
+                               hostId: room.hostId,
+                               players: playersInRoom,
+                               readyPlayers: Array.from(room!.readyPlayers),
+                               playerCount: room.playerCount,
+                               maxPlayers: MAX_PLAYERS,
+                               status: room.status
+                           };
+                        });
+                        console.log(`[${SERVER_ID}] Utilizador ID ${user.userId} desconectou-se do LOBBY da sala ${roomId}. Estado atualizado enviado.`);
+                    }
+                } else {
+                    // Room might have been deleted by `endGame` if host left and room became empty.
+                    // Just ensure userToRoomMap is cleaned up if room is already gone.
+                    memoryStore.deleteUserFromRoom(userId, roomId);
+                }
              }
         });
     });

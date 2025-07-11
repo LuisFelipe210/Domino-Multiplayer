@@ -43,6 +43,8 @@ const elements = {
     historyModal: document.getElementById('history-modal'),
     historyListContainer: document.getElementById('history-list-container'),
     historyCloseBtn: document.getElementById('history-close-btn'),
+    // Loading Overlay
+    loadingOverlay: document.getElementById('loading-overlay'),
 };
 
 function createDominoElement(piece, isHand) {
@@ -92,6 +94,8 @@ export const ui = {
         if (this.views[viewName]) {
             this.views[viewName].classList.add('active');
         }
+        // Always reset join room form when view changes
+        this.joinRoomForm.reset(); 
     },
 
     showLoggedInHeader(username) {
@@ -136,6 +140,14 @@ export const ui = {
         this.alertModal.style.display = 'flex';
     },
 
+    showLoading() {
+        this.loadingOverlay.classList.remove('hidden');
+    },
+
+    hideLoading() {
+        this.loadingOverlay.classList.add('hidden');
+    },
+
     async renderRoomsList() {
         try {
             const data = await api.listRooms();
@@ -147,6 +159,16 @@ export const ui = {
             data.rooms.forEach(room => {
                 const li = document.createElement('li');
                 li.textContent = `${room.name} (${room.playerCount}/${room.maxPlayers}) ${room.hasPassword ? '🔒' : ''}`;
+                
+                // Adiciona a classe com base no status da sala
+                if (room.status === 'playing') {
+                    li.classList.add('room-playing');
+                    li.textContent += ' (Em Jogo)';
+                } else {
+                    li.classList.add('room-waiting');
+                    li.textContent += ' (Livre)';
+                }
+                
                 this.roomsList.appendChild(li);
             });
         } catch (err) {
@@ -156,7 +178,7 @@ export const ui = {
     },
     
     renderLobbyState() {
-        const { roomState, myId } = state;
+        const { roomState, myId, username } = state; // Adiciona 'username' ao desestruturar
 
         clearBoard();
         this.playerHandContainer.style.display = 'none';
@@ -164,6 +186,13 @@ export const ui = {
         this.turnTimerDiv.style.display = 'none';
         this.readyBtn.style.display = 'none';
         this.startGameBtn.style.display = 'none';
+
+        // Garante que o cabeçalho de usuário logado seja exibido ao entrar no lobby
+        if (username) {
+            this.showLoggedInHeader(username);
+        } else {
+            this.showLoggedOutHeader();
+        }
 
         if (!roomState || !roomState.players) return;
         
@@ -218,59 +247,80 @@ export const ui = {
         this.readyBtn.style.display = 'none';
 
         // --- Status e Controles ---
-        if (gameState.isSpectator) {
-            this.gameStatusDiv.textContent = 'Modo Espectador';
-            this.playerHandContainer.style.display = 'none';
-            this.passTurnBtn.style.display = 'none';
-        } else {
-            const isMyTurn = gameState.turn === myId;
-            const currentPlayer = gameState.players.find(p => p.id === gameState.turn);
-            this.gameStatusDiv.textContent = isMyTurn ? "É a sua vez!" : `Aguardando a vez de ${currentPlayer?.username || '...'}`;
+        clearInterval(state.turnTimerInterval); // Limpa qualquer timer existente
+        this.turnTimerDiv.style.display = 'none'; // Garante que o div do timer esteja oculto
+
+        const isMyTurn = gameState.turn === myId;
+        const currentPlayer = gameState.players.find(p => p.id === gameState.turn);
+
+        const playerHandContainer = document.getElementById('player-hand-container');
+        const gameBoardContainer = document.getElementById('game-board-container'); // Mantém a referência, mas não será mais modificado para brilho
+
+        if (isMyTurn) {
+            // Se for a sua vez, inicia o timer e atualiza o status div
+            let timeLeft = 30; // Supondo 30 segundos, ajuste conforme gameConfig.ts
+            const updateMyTurnStatus = () => {
+                this.gameStatusDiv.innerHTML = `É a sua vez! <span class="turn-timer-display">(${timeLeft}s)</span>`;
+                const timerSpan = this.gameStatusDiv.querySelector('.turn-timer-display');
+                if (timerSpan) {
+                    timerSpan.style.color = timeLeft <= 10 ? 'var(--danger-color)' : 'inherit';
+                }
+                if (timeLeft <= 0) {
+                    clearInterval(state.turnTimerInterval);
+                    this.gameStatusDiv.innerHTML = `É a sua vez! <span class="turn-timer-display">(Tempo esgotado!)</span>`;
+                    const timerSpanEnded = this.gameStatusDiv.querySelector('.turn-timer-display');
+                    if (timerSpanEnded) {
+                        timerSpanEnded.style.color = 'var(--danger-color)';
+                    }
+                }
+            };
+            updateMyTurnStatus();
+            state.turnTimerInterval = setInterval(() => {
+                timeLeft--;
+                updateMyTurnStatus();
+            }, 1000);
+
             this.playerHandContainer.style.display = 'block';
             this.passTurnBtn.style.display = 'inline-block';
 
-            if (!isMyTurn) {
-                this.passTurnBtn.disabled = true;
-            } else {
-                // É a minha vez, vamos verificar se tenho jogadas válidas.
-                const hasPlayablePiece = (() => {
-                    // Se não tiver mão, não pode jogar.
-                    if (!myHand || myHand.length === 0) return false;
-                    // Se o tabuleiro estiver vazio, qualquer peça é jogável.
-                    if (gameState.board.length === 0) return true;
-                    // Se não houver pontas ativas (jogo bloqueado), não pode jogar.
-                    if (!gameState.activeEnds || gameState.activeEnds.length === 0) return false;
-                    
-                    // Verifica se alguma peça na mão corresponde a alguma ponta ativa.
-                    return myHand.some(piece => 
-                        gameState.activeEnds.some(end => 
-                            piece.value1 === end.value || piece.value2 === end.value
-                        )
-                    );
-                })();
-
-                // Desativa o botão de passar se houver uma peça jogável.
-                this.passTurnBtn.disabled = hasPlayablePiece;
+            // Adiciona a classe de brilho SOMENTE na mão
+            if (playerHandContainer) {
+                playerHandContainer.classList.add('my-turn-highlight');
             }
-        }
+            // Remove a classe de brilho do tabuleiro (para garantir que não esteja lá por alguma razão)
+            if (gameBoardContainer) {
+                gameBoardContainer.classList.remove('my-turn-highlight');
+            }
 
-        // --- Timer ---
-        clearInterval(state.turnTimerInterval);
-        if (gameState.turn === myId && !gameState.isSpectator) {
-            this.turnTimerDiv.style.display = 'block';
-            let timeLeft = 30;
-            const updateTimerDisplay = () => {
-                this.turnTimerDiv.textContent = `Tempo Restante: ${timeLeft}s`;
-                this.turnTimerDiv.style.color = timeLeft <= 10 ? '#c0392b' : '#2c3e50';
-            };
-            updateTimerDisplay();
-            state.turnTimerInterval = setInterval(() => {
-                timeLeft--;
-                updateTimerDisplay();
-                if (timeLeft <= 0) clearInterval(state.turnTimerInterval);
-            }, 1000);
+            // Verifica se tem jogadas válidas para desativar o botão de passar
+            const hasPlayablePiece = (() => {
+                if (!myHand || myHand.length === 0) return false;
+                if (gameState.board.length === 0) return true;
+                if (!gameState.activeEnds || gameState.activeEnds.length === 0) return false;
+                
+                return myHand.some(piece => 
+                    gameState.activeEnds.some(end => 
+                        piece.value1 === end.value || piece.value2 === end.value
+                    )
+                );
+            })();
+            this.passTurnBtn.disabled = hasPlayablePiece;
+
         } else {
-            this.turnTimerDiv.style.display = 'none';
+            // Se não for a sua vez, exibe claramente de quem é a vez
+            this.gameStatusDiv.textContent = `Vez de ${currentPlayer?.username || 'Jogador Desconhecido'}`;
+            this.gameStatusDiv.style.color = 'var(--ink-color)'; // Garante a cor padrão
+            this.playerHandContainer.style.display = 'block'; // Mão visível mesmo quando não é a vez
+            this.passTurnBtn.style.display = 'inline-block';
+            this.passTurnBtn.disabled = true; // Não pode passar se não for sua vez
+
+            // Remove a classe de brilho de ambos (garante que não haja brilho quando não é sua vez)
+            if (playerHandContainer) {
+                playerHandContainer.classList.remove('my-turn-highlight');
+            }
+            if (gameBoardContainer) {
+                gameBoardContainer.classList.remove('my-turn-highlight');
+            }
         }
 
         // --- Info dos Jogadores ---
@@ -291,7 +341,7 @@ export const ui = {
         (myHand || []).forEach(piece => {
             const dominoEl = createDominoElement(piece, true);
             dominoEl.onclick = () => {
-                if (gameState.isSpectator || gameState.turn !== myId || pieceToPlayWithOptions) return;
+                if (gameState.turn !== myId || pieceToPlayWithOptions) return;
                 ws.sendMessage({ type: 'PLAY_PIECE', piece });
             };
             this.playerHandDiv.appendChild(dominoEl);

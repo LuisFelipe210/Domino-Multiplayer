@@ -1,3 +1,4 @@
+// projeto-domino/frontend/js/main.js
 import { state } from './state.js';
 import { ui } from './ui.js';
 import { api } from './api.js';
@@ -5,8 +6,10 @@ import { ws } from './websocket.js';
 
 // --- Função auxiliar para verificar sessão e iniciar a UI ---
 async function checkSessionAndStart() {
+    console.log('checkSessionAndStart called.'); // NEW LOG
     try {
         const data = await api.checkForActiveGame();
+        console.log('checkForActiveGame response:', data); // NEW LOG
         if (data.user && data.user.username) {
             state.myId = data.user.userId;
             state.username = data.user.username;
@@ -14,13 +17,18 @@ async function checkSessionAndStart() {
         }
 
         if (data.active_game) {
-            ui.showAlert('Reconectando a uma partida em andamento...');
+            console.log('Active game detected, showing game view and connecting WS.'); // NEW LOG
+            ui.showLoading(); 
+            ui.showView('game');
             ws.connect(data.gameServerUrl);
         } else {
+            console.log('No active game, showing lobby view.'); // NEW LOG
             ui.showView('lobby');
             ui.renderRoomsList();
         }
     } catch (error) {
+        console.error('Error in checkSessionAndStart:', error); // NEW LOG
+        ui.hideLoading(); 
         // Erro aqui geralmente significa token inválido ou expirado
         state.myId = null;
         state.username = null;
@@ -144,10 +152,5 @@ ui.historyCloseBtn.addEventListener('click', () => {
 
 // --- Inicialização da Aplicação ---
 window.addEventListener('load', () => {
-    if (document.cookie.includes('token=')) {
-        checkSessionAndStart();
-    } else {
-        ui.showLoggedOutHeader();
-        ui.showView('auth');
-    }
+  checkSessionAndStart(); 
 });

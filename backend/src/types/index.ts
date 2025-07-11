@@ -1,3 +1,4 @@
+// projeto-domino/backend/src/types/index.ts
 import { WebSocket } from 'ws';
 
 export interface AuthenticatedWebSocket extends WebSocket {
