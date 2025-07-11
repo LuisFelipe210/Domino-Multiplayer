@@ -1,4 +1,3 @@
-// projeto-domino/backend/src/types/index.ts
 import { WebSocket } from 'ws';
 
 export interface AuthenticatedWebSocket extends WebSocket {
@@ -8,6 +7,12 @@ export interface AuthenticatedWebSocket extends WebSocket {
     iat: number;
     exp: number;
   };
+}
+
+export interface ChatMessageObject {
+  username: string;
+  message: string;
+  timestamp: number;
 }
 
 export interface Domino {
@@ -56,6 +61,7 @@ export interface GameState {
   consecutivePasses: number;
   disconnectTimers: Record<string, NodeJS.Timeout>;
   occupiedCells: Record<string, boolean>;
+  chatHistory: ChatMessageObject[];
 }
 
 type EventPayload = {
@@ -82,8 +88,6 @@ export interface DecodedToken {
   exp: number;
 }
 
-// --- Tipos para Mensagens do WebSocket ---
-
 interface BaseMessage {
   type: string;
 }
@@ -106,10 +110,13 @@ export interface PlayerReadyMessage extends BaseMessage {
   type: 'PLAYER_READY';
 }
 
-// NOVO: Interface para a mensagem de início de jogo
 export interface StartGameMessage extends BaseMessage {
   type: 'START_GAME';
 }
 
-// MODIFICADO: União de tipos agora inclui a nova mensagem
-export type GameMessage = PlayPieceMessage | PassTurnMessage | LeaveGameMessage | PlayerReadyMessage | StartGameMessage;
+export interface ChatMessage extends BaseMessage {
+  type: 'CHAT_MESSAGE';
+  message: string;
+}
+
+export type GameMessage = PlayPieceMessage | PassTurnMessage | LeaveGameMessage | PlayerReadyMessage | StartGameMessage | ChatMessage;

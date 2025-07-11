@@ -115,14 +115,30 @@
                 <div id="player-hand"></div>
             </div>
         </div>
+        
+        <div id="chat-window">
+            <div id="chat-header">
+                <h3>Chat da Partida</h3>
+                <button id="chat-close-btn">&times;</button>
+            </div>
+            <ul id="chat-messages-list"></ul>
+            <form id="chat-form">
+                <input type="text" id="chat-input" placeholder="Digite sua mensagem..." autocomplete="off">
+                <button type="submit">Enviar</button>
+            </form>
+        </div>
+
+        <button id="chat-toggle-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" width="24" height="24"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2z"></path></svg>
+            <span id="chat-notification-dot" class="hidden"></span>
+        </button>
     </div>
 </div>
 
 <div id="history-modal" class="modal-overlay" style="display: none;">
     <div class="modal-content history-modal-content">
         <h2>Histórico de Partidas</h2>
-        <div id="history-list-container">
-            </div>
+        <div id="history-list-container"></div>
         <div class="modal-buttons">
             <button id="history-close-btn" class="btn">Fechar</button>
         </div>

@@ -1,43 +1,34 @@
-// projeto-domino/frontend/js/main.js
 import { state } from './state.js';
 import { ui } from './ui.js';
 import { api } from './api.js';
 import { ws } from './websocket.js';
 
-// --- Função auxiliar para verificar sessão e iniciar a UI ---
 async function checkSessionAndStart() {
     try {
-        // Esta chamada de API agora determina se estamos logados e se temos um jogo ativo
         const data = await api.checkForActiveGame();
 
-        // Sempre atualiza o estado do usuário se a API retornar os dados
         if (data.user && data.user.username) {
             state.myId = data.user.userId;
             state.username = data.user.username;
             ui.showLoggedInHeader(state.username);
         }
 
-        // Se um jogo ativo for encontrado, conecta-se diretamente a ele
         if (data.active_game) {
-            ui.showLoading(); // Mostra "Reconectando..."
-            ui.showView('game'); // Mostra a tela do jogo por trás do overlay
+            ui.showLoading();
+            ui.showView('game');
             ws.connect(data.gameServerUrl);
         } else {
-            // Se não houver jogo ativo, mas estivermos logados, mostra o lobby
             ui.showView('lobby');
             ui.renderRoomsList();
         }
     } catch (error) {
-        // Um erro aqui geralmente significa que o token é inválido ou expirou
         ui.hideLoading(); 
         state.myId = null;
         state.username = null;
         ui.showLoggedOutHeader();
-        ui.showView('auth'); // Redireciona para a tela de login
+        ui.showView('auth');
     }
 }
-
-// --- Event Listeners de Autenticação e Navegação ---
 
 ui.loginForm.addEventListener('submit', async (e) => {
     e.preventDefault();
@@ -45,7 +36,7 @@ ui.loginForm.addEventListener('submit', async (e) => {
     const password = document.getElementById('login-password').value;
     try {
         await api.login(username, password);
-        await checkSessionAndStart(); // Re-executa a verificação após o login
+        await checkSessionAndStart();
     } catch (err) {
         ui.showAlert(`Erro no login: ${err.message}`);
     }
@@ -67,7 +58,7 @@ ui.registerForm.addEventListener('submit', async (e) => {
 });
 
 ui.logoutBtn.addEventListener('click', async () => {
-    state.intentionalDisconnect = true; // Sinaliza que o logout é intencional
+    state.intentionalDisconnect = true;
     if (state.ws) {
         state.ws.close();
         state.ws = null;
@@ -91,8 +82,6 @@ ui.showLoginLink.addEventListener('click', (e) => {
     ui.loginSection.style.display = 'block';
 });
 
-// --- Event Listeners do Lobby ---
-
 ui.refreshRoomsBtn.addEventListener('click', () => ui.renderRoomsList());
 
 ui.joinRoomForm.addEventListener('submit', async (e) => {
@@ -107,8 +96,6 @@ ui.joinRoomForm.addEventListener('submit', async (e) => {
         ui.showAlert(`Erro ao entrar na sala: ${err.message}`);
     }
 });
-
-// --- Event Listeners do Jogo ---
 
 ui.startGameBtn.addEventListener('click', () => {
     if (state.roomState.hostId === state.myId) {
@@ -140,7 +127,6 @@ ui.leaveGameBtn.addEventListener('click', () => {
     ]);
 });
 
-// --- Event Listeners do Histórico ---
 ui.historyBtn.addEventListener('click', async () => {
     try {
         const history = await api.getMatchHistory();
@@ -149,12 +135,28 @@ ui.historyBtn.addEventListener('click', async () => {
         ui.showAlert(`Erro ao buscar histórico: ${err.message}`);
     }
 });
-
 ui.historyCloseBtn.addEventListener('click', () => {
     ui.historyModal.style.display = 'none';
 });
 
-// --- Inicialização da Aplicação ---
+ui.chatToggleBtn.addEventListener('click', () => {
+    ui.toggleChatWindow();
+    if (ui.chatWindow.classList.contains('open')) {
+        ui.updateChatNotification(false);
+    }
+});
+ui.chatCloseBtn.addEventListener('click', () => {
+    ui.toggleChatWindow();
+});
+ui.chatForm.addEventListener('submit', (e) => {
+    e.preventDefault();
+    const message = ui.chatInput.value.trim();
+    if (message) {
+        ws.sendMessage({ type: 'CHAT_MESSAGE', message: message });
+        ui.chatInput.value = '';
+    }
+});
+
 window.addEventListener('load', () => {
   checkSessionAndStart(); 
 });

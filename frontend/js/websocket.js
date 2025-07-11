@@ -8,7 +8,7 @@ function handleMessage(message) {
             if (message.myId) state.myId = message.myId;
             ui.renderLobbyState();
             ui.showView('game');
-            ui.hideLoading(); // Esconde o overlay após receber o estado da sala
+            ui.hideLoading();
             break;
         case 'JOGO_INICIADO':
         case 'ESTADO_ATUALIZADO':
@@ -16,9 +16,12 @@ function handleMessage(message) {
             state.gameState = message;
             if (message.myId) state.myId = message.myId;
             if (message.yourHand) state.myHand = message.yourHand;
+            
+            ui.renderChatHistory(message.chatHistory); 
+
             ui.renderGameState();
             ui.showView('game');
-            ui.hideLoading(); // Esconde o overlay após atualização (incluindo reconexão)
+            ui.hideLoading();
             break;
         case 'UPDATE_HAND':
             state.myHand = message.yourNewHand;
@@ -30,8 +33,8 @@ function handleMessage(message) {
             ui.renderGameState();
             break;
         case 'JOGO_TERMINADO':
-            state.gameEnded = true; // Define a flag
-            state.gameState = {};   // Limpa o estado do jogo anterior
+            state.gameEnded = true;
+            state.gameState = {};
             const gameOverMessage = `Fim de jogo! Vencedor: ${message.winner}. Motivo: ${message.reason}`;
             if (message.canRematch) {
                 ui.showAlert(gameOverMessage, [
@@ -49,10 +52,17 @@ function handleMessage(message) {
                 ui.renderRoomsList();
             }
             break;
+        case 'NEW_CHAT_MESSAGE':
+            const isMe = message.username === state.username;
+            ui.addChatMessage(message.username, message.message, isMe);
+            if (!ui.chatWindow.classList.contains('open')) {
+                ui.updateChatNotification(true);
+            }
+            break;
         case 'ERRO':
             ui.showAlert(`Erro: ${message.message}`);
-            state.pieceToPlayWithOptions = null; // Limpa o estado de escolha
-            ui.hideLoading(); // Garante que o loading seja escondido em caso de erro
+            state.pieceToPlayWithOptions = null;
+            ui.hideLoading();
             break;
     }
 }
@@ -80,11 +90,8 @@ export const ws = {
             clearInterval(state.turnTimerInterval);
             
             if (state.intentionalDisconnect) {
-                return; // Não faz nada se a desconexão foi intencional
+                return;
             }
-
-            // Para desconexões acidentais, avisa o usuário para atualizar a página.
-            // A lógica de reconexão será tratada pelo `checkSessionAndStart` no recarregamento.
             ui.showAlert('Conexão com o servidor perdida. Por favor, atualize a página.');
             ui.hideLoading();
             state.ws = null;
@@ -93,7 +100,6 @@ export const ws = {
         state.ws.onerror = (err) => {
             console.error('Erro de WebSocket:', err);
             ui.hideLoading();
-            // Numa falha de conexão, é melhor apenas fechar e deixar o `onclose` lidar com a mensagem
             if (state.ws) {
                 state.ws.close(); 
             }
@@ -110,17 +116,16 @@ export const ws = {
     },
 
     leaveRoom() {
-        state.intentionalDisconnect = true; // Marca como intencional
+        state.intentionalDisconnect = true;
         if (state.ws) {
             state.ws.close();
             state.ws = null;
         }
-        // Reseta os estados relacionados ao jogo
         Object.assign(state, {
             gameState: {}, roomState: {}, myHand: [], pieceToPlayWithOptions: null, gameEnded: false,
         });
-        ui.renderLobbyState(); // Limpa a UI de jogo
+        ui.renderLobbyState();
         ui.showView('lobby');
-        ui.renderRoomsList(); // Atualiza a lista de salas do lobby
+        ui.renderRoomsList();
     }
 };

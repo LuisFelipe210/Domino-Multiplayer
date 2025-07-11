@@ -1,5 +1,5 @@
 import { RawData } from 'ws';
-import { AuthenticatedWebSocket, GameLogicResult, GameMessage } from '../types';
+import { AuthenticatedWebSocket, GameLogicResult, GameMessage, ChatMessageObject } from '../types';
 import { 
     getGameState, 
     handlePlayPiece, 
@@ -7,9 +7,10 @@ import {
     handleLeaveGame,
     handlePlayerReady,
     handleStartGame,
-    processGameLogicResult 
+    processGameLogicResult,
+    saveGameState
 } from './gameHandler';
-import { sendError } from './gameUtils';
+import { broadcastToRoom, sendError } from './gameUtils';
 
 export const handleGameMessage = async (ws: AuthenticatedWebSocket, message: RawData, roomId: string) => {
     let data: GameMessage;
@@ -22,7 +23,7 @@ export const handleGameMessage = async (ws: AuthenticatedWebSocket, message: Raw
     const userId = String(ws.user.userId);
     let gameState = await getGameState(roomId);
 
-    if (!gameState && !['PLAYER_READY', 'START_GAME'].includes(data.type)) {
+    if (!gameState && !['PLAYER_READY', 'START_GAME', 'CHAT_MESSAGE'].includes(data.type)) {
         return sendError(ws, "O jogo não foi encontrado ou já terminou.");
     }
 
@@ -53,6 +54,22 @@ export const handleGameMessage = async (ws: AuthenticatedWebSocket, message: Raw
         case 'START_GAME':
             result = handleStartGame(userId, roomId);
             break;
+        case 'CHAT_MESSAGE':
+            if (gameState) {
+                const newChatMessage: ChatMessageObject = {
+                    username: ws.user.username,
+                    message: data.message,
+                    timestamp: Date.now()
+                };
+                gameState.chatHistory.push(newChatMessage);
+                await saveGameState(roomId, gameState);
+                
+                broadcastToRoom(roomId, {
+                    type: 'NEW_CHAT_MESSAGE',
+                    ...newChatMessage
+                });
+            }
+            return;
         default:
             return sendError(ws, "Tipo de mensagem desconhecido.");
     }
