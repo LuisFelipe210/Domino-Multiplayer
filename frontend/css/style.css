@@ -7,7 +7,7 @@
     --accent-hover: #2980b9;
     --danger-color: #e74c3c;
     --danger-hover: #c0392b;
-    --glow-color: #2ecc71; /* Cor para o brilho */
+    /* --glow-color foi removido pois não é mais necessário */
 }
 
 * {
@@ -264,6 +264,8 @@ input[type="text"]:focus, input[type="password"]:focus {
 #player-hand-container { 
     margin-top: 0; 
     flex-shrink: 0;
+    /* Adicionado para transição suave da opacidade */
+    transition: opacity 0.3s ease;
 }
 #player-hand {
     display: flex; flex-wrap: wrap; justify-content: center;
@@ -302,7 +304,7 @@ input[type="text"]:focus, input[type="password"]:focus {
     padding: 4px;
     user-select: none;
     box-shadow: 1px 1px 0px #ccc, 2px 2px 0px #ccc, 3px 3px 6px rgba(0, 0, 0, 0.3);
-    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out;
+    transition: transform 0.2s ease-out, box-shadow 0.2s ease-out, opacity 0.3s ease, filter 0.3s ease;
 }
 .domino-board { position: absolute; }
 /* MODIFICADO: A rotação da peça na mão é agora controlada pelo CSS */
@@ -312,11 +314,37 @@ input[type="text"]:focus, input[type="password"]:focus {
     transform: rotate(90deg);
 }
 
-/* MODIFICADO: A animação de hover agora combina a rotação com o movimento */
+/* --- NOVOS ESTILOS DE ANIMAÇÃO E ESTADO DE TURNO --- */
+@keyframes bob-effect {
+    0% {
+        transform: rotate(90deg) translateY(0);
+    }
+    50% {
+        transform: rotate(90deg) translateY(-8px);
+    }
+    100% {
+        transform: rotate(90deg) translateY(0);
+    }
+}
+
 .domino-hand:hover {
-    transform: rotate(90deg) translateY(-8px);
+    animation: bob-effect 0.7s infinite;
     box-shadow: 1px 1px 0px #ccc, 2px 2px 0px #ccc, 9px 9px 15px rgba(0, 0, 0, 0.25);
 }
+
+#player-hand-container.not-my-turn .domino-hand {
+    opacity: 0.6;
+    filter: grayscale(80%);
+    cursor: not-allowed;
+}
+
+/* Impede que a animação de hover seja executada quando não for a vez do jogador */
+#player-hand-container.not-my-turn .domino-hand:hover {
+    animation: none;
+    box-shadow: 1px 1px 0px #ccc, 2px 2px 0px #ccc, 3px 3px 6px rgba(0, 0, 0, 0.3);
+}
+/* --- FIM DOS NOVOS ESTILOS --- */
+
 
 /* MODIFICADO: Divisor agora é vertical */
 .divider { 
@@ -439,23 +467,6 @@ input[type="text"]:focus, input[type="password"]:focus {
 .modal-buttons {
     margin-top: 20px;
 }
-
-@keyframes glow-pulse {
-    0% {
-        box-shadow: 0 0 5px var(--glow-color), 0 0 10px var(--glow-color);
-    }
-    50% {
-        box-shadow: 0 0 15px var(--glow-color), 0 0 25px var(--glow-color), 0 0 35px var(--glow-color);
-    }
-    100% {
-        box-shadow: 0 0 5px var(--glow-color), 0 0 10px var(--glow-color);
-    }
-}
-
-.my-turn-highlight {
-    animation: glow-pulse 1.5s infinite alternate; /* Aplica a animação */
-    border: 3px solid var(--glow-color) !important; /* Adiciona uma borda para mais clareza */
-}  
 
 /* Loading Overlay */
 #loading-overlay {

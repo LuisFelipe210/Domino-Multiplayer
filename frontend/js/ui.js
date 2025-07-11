@@ -261,7 +261,7 @@ export const ui = {
 
             this.playerHandContainer.style.display = 'block';
             this.passTurnBtn.style.display = 'inline-block';
-            playerHandContainer?.classList.add('my-turn-highlight');
+            playerHandContainer?.classList.remove('not-my-turn');
 
             const hasPlayablePiece = (() => {
                 if (!myHand || myHand.length === 0) return false;
@@ -281,7 +281,7 @@ export const ui = {
             this.playerHandContainer.style.display = 'block';
             this.passTurnBtn.style.display = 'inline-block';
             this.passTurnBtn.disabled = true;
-            playerHandContainer?.classList.remove('my-turn-highlight');
+            playerHandContainer?.classList.add('not-my-turn');
         }
 
         // --- Info dos Jogadores ---
