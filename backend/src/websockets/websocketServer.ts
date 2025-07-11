@@ -54,7 +54,8 @@ export function initWebSocketServer(server: http.Server) {
         
         ws.user = user;
         const userId = String(user.userId);
-        const roomId = pathname.split('/').pop()!;
+        const encodedRoomId = pathname.split('/').pop()!;
+        const roomId = decodeURIComponent(encodedRoomId);
         
         // NOVO: Lidar com conexões duplicadas. Se um usuário se conectar novamente,
         // a conexão antiga é encerrada para garantir que apenas a mais recente seja usada.
