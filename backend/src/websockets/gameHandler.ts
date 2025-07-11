@@ -25,13 +25,11 @@ export const startTurnTimer = (roomId: string, gameState: GameState) => {
         console.log(`[${SERVER_ID}] Tempo esgotado para o jogador ${currentPlayerId} na sala ${roomId}.`);
         
         const currentState = await getGameState(roomId);
-        // Assegura que o jogo ainda está a decorrer e que é a vez deste jogador
         if (!currentState || currentState.turn !== currentPlayerId) {
             return;
         }
 
         const hand = currentState.hands[currentPlayerId];
-        // Se não tiver mão ou peças, passa a vez (salvaguarda para estados inconsistentes)
         if (!hand || hand.length === 0) {
             console.log(`[${SERVER_ID}] Timeout: jogador ${currentPlayerId} não tem mão ou peças, passando a vez.`);
             const result = handlePassTurn(currentState, currentPlayerId, roomId);
@@ -42,26 +40,22 @@ export const startTurnTimer = (roomId: string, gameState: GameState) => {
         let firstValidMove: { piece: Domino; endId?: string } | null = null;
 
         if (currentState.board.length === 0) {
-            // Qualquer peça pode ser jogada. Joga a primeira.
             firstValidMove = { piece: hand[0] };
         } else {
-            // Encontra a primeira peça na mão que pode ser jogada em qualquer ponta ativa.
             for (const piece of hand) {
                 const validEnd = currentState.activeEnds.find(end => end.value === piece.value1 || end.value === piece.value2);
                 if (validEnd) {
                     firstValidMove = { piece, endId: validEnd.id };
-                    break; // Encontrou uma jogada válida, para de procurar.
+                    break;
                 }
             }
         }
 
         let result: GameLogicResult;
         if (firstValidMove) {
-            // Foi encontrada uma jogada válida, executa-a.
             console.log(`[${SERVER_ID}] Jogando peça automaticamente para ${currentPlayerId}: peça ${firstValidMove.piece.value1}-${firstValidMove.piece.value2}`);
             result = handlePlayPiece(currentState, currentPlayerId, { type: 'PLAY_PIECE', piece: firstValidMove.piece, endId: firstValidMove.endId }, roomId);
         } else {
-            // Nenhuma jogada válida, passa a vez.
             console.log(`[${SERVER_ID}] Nenhuma jogada válida para ${currentPlayerId}, passando a vez.`);
             result = handlePassTurn(currentState, currentPlayerId, roomId);
         }
@@ -128,6 +122,7 @@ export const getPublicState = (gameState: GameState) => {
         players: gameState.players,
         activeEnds: gameState.activeEnds,
         playerPieceCounts: playerPieceCounts,
+        chatHistory: gameState.chatHistory,
     };
 };
 
@@ -160,8 +155,8 @@ export function handlePlayPiece(initialGameState: GameState, userId: string, dat
 
     let newPlacedPiece: PlacedDomino;
     let nextActiveEnds: BoardEnd[];
-    const pieceHeightUnits = 1; // altura de uma peça é 1 unidade (36px)
-    const pieceWidthUnits = 2;  // largura de uma peça é 2 unidades (72px)
+    const pieceHeightUnits = 1;
+    const pieceWidthUnits = 2;
 
     if (initialGameState.board.length === 0) {
         const rotation = isDouble ? 90 : 0;
@@ -202,40 +197,31 @@ export function handlePlayPiece(initialGameState: GameState, userId: string, dat
             return { error: 'A ponta escolhida não é válida.' };
         }
 
-        // --- LÓGICA DE POSICIONAMENTO E ROTAÇÃO REATORADA ---
-
-        // 1. Determina a direção final da jogada, verificando colisões com as bordas.
         let newEndAttachDirection = targetEnd.attachDirection;
         const collisionMargin = 1.5;
 
-        // Calcula a posição da nova ponta *se não houvesse virada* para checar colisão.
-        if (newEndAttachDirection === 0 && (targetEnd.x + pieceWidthUnits > (BOARD_WIDTH_UNITS / 2) - collisionMargin)) newEndAttachDirection = 90; // Direita -> Vira para Baixo
-        else if (newEndAttachDirection === 180 && (targetEnd.x - pieceWidthUnits < (-BOARD_WIDTH_UNITS / 2) + collisionMargin)) newEndAttachDirection = 270; // Esquerda -> Vira para Cima
-        else if (newEndAttachDirection === 90 && (targetEnd.y + pieceWidthUnits > (BOARD_HEIGHT_UNITS / 2) - collisionMargin)) newEndAttachDirection = 180; // Baixo -> Vira para Esquerda
-        else if (newEndAttachDirection === 270 && (targetEnd.y - pieceWidthUnits < (-BOARD_HEIGHT_UNITS / 2) + collisionMargin)) newEndAttachDirection = 0; // Cima -> Vira para Direita
+        if (newEndAttachDirection === 0 && (targetEnd.x + pieceWidthUnits > (BOARD_WIDTH_UNITS / 2) - collisionMargin)) newEndAttachDirection = 90;
+        else if (newEndAttachDirection === 180 && (targetEnd.x - pieceWidthUnits < (-BOARD_WIDTH_UNITS / 2) + collisionMargin)) newEndAttachDirection = 270;
+        else if (newEndAttachDirection === 90 && (targetEnd.y + pieceWidthUnits > (BOARD_HEIGHT_UNITS / 2) - collisionMargin)) newEndAttachDirection = 180;
+        else if (newEndAttachDirection === 270 && (targetEnd.y - pieceWidthUnits < (-BOARD_HEIGHT_UNITS / 2) + collisionMargin)) newEndAttachDirection = 0;
 
-        // 2. Determina a rotação final da peça com base na direção final e se é uma bucha.
         const finalIsHorizontal = newEndAttachDirection === 0 || newEndAttachDirection === 180;
-        const rotation: 0 | 90 | 180 | 270 = isDouble
-            ? (finalIsHorizontal ? 90 : 0) // Buchas são perpendiculares à linha de jogo.
-            : (finalIsHorizontal ? 0 : 90); // Peças normais são paralelas.
+        const rotation: 0 | 90 | 180 | 270 = isDouble ? (finalIsHorizontal ? 90 : 0) : (finalIsHorizontal ? 0 : 90);
 
-        // 3. Determina as dimensões da peça no tabuleiro com base na sua rotação final.
         const pieceIsRotatedVertically = rotation === 90 || rotation === 270;
         const pieceWidthOnBoard = pieceIsRotatedVertically ? pieceHeightUnits : pieceWidthUnits;
         const pieceHeightOnBoard = pieceIsRotatedVertically ? pieceWidthUnits : pieceHeightUnits;
         
-        // 4. Calcula a posição final da peça e da nova ponta.
         let newPieceX, newPieceY, newEndX, newEndY;
         const sign = (newEndAttachDirection === 0 || newEndAttachDirection === 90) ? 1 : -1;
 
-        if (finalIsHorizontal) { // Jogada na horizontal (esquerda ou direita)
+        if (finalIsHorizontal) {
             const pieceCenterOffset = pieceWidthOnBoard / 2;
             newPieceX = targetEnd.x + (sign * pieceCenterOffset);
             newPieceY = targetEnd.y;
             newEndX = newPieceX + (sign * pieceCenterOffset);
             newEndY = newPieceY;
-        } else { // Jogada na vertical (cima ou baixo)
+        } else {
             const pieceCenterOffset = pieceHeightOnBoard / 2;
             newPieceX = targetEnd.x;
             newPieceY = targetEnd.y + (sign * pieceCenterOffset);
@@ -243,19 +229,17 @@ export function handlePlayPiece(initialGameState: GameState, userId: string, dat
             newEndY = newPieceY + (sign * pieceCenterOffset);
         }
 
-        // 5. Orienta os valores da peça para corresponder à ponta de conexão.
         const isGrowingDirection = newEndAttachDirection === 0 || newEndAttachDirection === 90;
-        if (isGrowingDirection) { // Direita ou Baixo
+        if (isGrowingDirection) {
             if (pieceToPlay.value1 !== targetEnd.value) {
                 [pieceToPlay.value1, pieceToPlay.value2] = [pieceToPlay.value2, pieceToPlay.value1];
             }
-        } else { // Esquerda ou Cima
+        } else {
             if (pieceToPlay.value2 !== targetEnd.value) {
                 [pieceToPlay.value1, pieceToPlay.value2] = [pieceToPlay.value2, pieceToPlay.value1];
             }
         }
         
-        // 6. Cria a nova peça posicionada e a nova ponta ativa.
         newPlacedPiece = { piece: pieceToPlay, x: newPieceX, y: newPieceY, rotation };
         const newEndValue = isGrowingDirection ? pieceToPlay.value2 : pieceToPlay.value1;
         const newEnd: BoardEnd = {
@@ -331,7 +315,7 @@ export async function startGame(roomId: string) {
     if (!room) return;
 
     room.status = 'playing';
-    room.readyPlayers.clear(); // Limpa o status de "pronto" ao iniciar um novo jogo
+    room.readyPlayers.clear();
     memoryStore.saveRoom(roomId, room);
 
     broadcastToLobby({ type: 'ROOM_REMOVED', roomName: roomId });
@@ -349,7 +333,8 @@ export async function startGame(roomId: string) {
 
     const gameState: GameState = {
         board: [], activeEnds: [], hands, turn: players[0].id,
-        players, consecutivePasses: 0, disconnectTimers: {}, occupiedCells: {}
+        players, consecutivePasses: 0, disconnectTimers: {}, occupiedCells: {},
+        chatHistory: []
     };
 
     await saveGameState(roomId, gameState);
@@ -399,7 +384,6 @@ export async function endGame(roomId: string, gameState: GameState, winner: Play
     });
 
     if (hostIsPresent) {
-        // Reset a sala para um potencial novo jogo
         console.log(`[${SERVER_ID}] Sala ${roomId} está a ser resetada para um novo jogo.`);
         memoryStore.deleteGameState(roomId);
         
@@ -407,7 +391,6 @@ export async function endGame(roomId: string, gameState: GameState, winner: Play
         room.readyPlayers.clear();
         memoryStore.saveRoom(roomId, room);
 
-        // Envia todos os jogadores de volta para o estado de lobby da sala
         broadcastToRoom(roomId, (clientInRoom) => {
             return {
                 type: 'ROOM_STATE',
@@ -425,7 +408,6 @@ export async function endGame(roomId: string, gameState: GameState, winner: Play
             };
         });
     } else {
-        // O anfitrião saiu, destrói a sala
         console.log(`[${SERVER_ID}] Dono da sala ${roomId} não está presente. A sala será destruída.`);
         memoryStore.deleteGameState(roomId);
         memoryStore.deleteRoom(roomId);
@@ -514,7 +496,7 @@ export async function processGameLogicResult(result: GameLogicResult, roomId: st
     }
     
     let finalGameState = result.newState || originalGameState;
-    if (!finalGameState) return; // Se não há estado, não há o que processar
+    if (!finalGameState) return;
 
     if (result.events) {
         const userIdForEvent = originalGameState.turn;
@@ -548,7 +530,6 @@ export function handlePlayerReady(userId: string, roomId: string): GameLogicResu
     console.log(`[${SERVER_ID}] Jogador ${userId} está pronto na sala ${roomId}. Prontos: ${room.readyPlayers.size}/${room.playerCount}`);
     memoryStore.saveRoom(roomId, room);
 
-    // Notifica todos na sala sobre a mudança de estado
     broadcastToRoom(roomId, (clientInRoom) => {
         return {
             type: 'ROOM_STATE',
@@ -566,7 +547,6 @@ export function handlePlayerReady(userId: string, roomId: string): GameLogicResu
         };
     });
 
-    // Verifica se todos estão prontos para iniciar o jogo
     const activePlayersCount = room.players.size;
     if (activePlayersCount >= MIN_PLAYERS_TO_START && room.readyPlayers.size === activePlayersCount) {
         console.log(`[${SERVER_ID}] Todos os jogadores estão prontos em ${roomId}. A iniciar novo jogo.`);

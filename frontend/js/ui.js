@@ -2,14 +2,12 @@ import { state } from './state.js';
 import { api } from './api.js';
 import { ws } from './websocket.js';
 
-// --- Elementos do DOM ---
 const elements = {
     views: {
         auth: document.getElementById('auth-view'),
         lobby: document.getElementById('lobby-view'),
         game: document.getElementById('game-view'),
     },
-    // Auth
     loginForm: document.getElementById('login-form'),
     registerForm: document.getElementById('register-form'),
     loginSection: document.getElementById('login-section'),
@@ -19,11 +17,9 @@ const elements = {
     logoutBtn: document.getElementById('logout-btn'),
     userInfoHeader: document.getElementById('user-info-header'),
     welcomeUsername: document.getElementById('welcome-username'),
-    // Lobby
     joinRoomForm: document.getElementById('join-room-form'),
     roomsList: document.getElementById('rooms-list'),
     refreshRoomsBtn: document.getElementById('refresh-rooms-btn'),
-    // Game
     gameBoard: document.getElementById('game-board'),
     playerHandDiv: document.getElementById('player-hand'),
     gameStatusDiv: document.getElementById('game-status'),
@@ -34,22 +30,25 @@ const elements = {
     startGameBtn: document.getElementById('start-game-btn'),
     readyBtn: document.getElementById('ready-btn'),
     playerHandContainer: document.getElementById('player-hand-container'),
-    // Modal
     alertModal: document.getElementById('alert-modal'),
     alertMessage: document.getElementById('alert-message'),
     alertModalButtons: document.getElementById('alert-modal-buttons'),
-    // Histórico
     historyBtn: document.getElementById('history-btn'),
     historyModal: document.getElementById('history-modal'),
     historyListContainer: document.getElementById('history-list-container'),
     historyCloseBtn: document.getElementById('history-close-btn'),
-    // Loading Overlay
     loadingOverlay: document.getElementById('loading-overlay'),
+    chatToggleBtn: document.getElementById('chat-toggle-btn'),
+    chatWindow: document.getElementById('chat-window'),
+    chatCloseBtn: document.getElementById('chat-close-btn'),
+    chatMessagesList: document.getElementById('chat-messages-list'),
+    chatForm: document.getElementById('chat-form'),
+    chatInput: document.getElementById('chat-input'),
+    chatNotificationDot: document.getElementById('chat-notification-dot'),
 };
 
 function createDominoElement(piece, isHand) {
     const dominoEl = document.createElement('div');
-    // Para a mão do jogador, queremos sempre que a peça seja vertical para economizar espaço
     const className = 'domino' + (isHand ? ' domino-hand' : ' domino-board');
     dominoEl.className = className;
     dominoEl.dataset.value = `${piece.value1}-${piece.value2}`;
@@ -82,14 +81,13 @@ function clearBoard() {
 }
 
 export const ui = {
-    ...elements, // Expõe todos os elementos para o main.js
+    ...elements,
 
     showView(viewName) {
         Object.values(this.views).forEach(v => v.classList.remove('active'));
         if (this.views[viewName]) {
             this.views[viewName].classList.add('active');
         }
-        // Always reset join room form when view changes
         this.joinRoomForm.reset(); 
     },
 
@@ -104,7 +102,7 @@ export const ui = {
 
     showAlert(message, buttons = [{ text: 'OK', action: 'close' }]) {
         this.alertMessage.textContent = message;
-        this.alertModalButtons.innerHTML = ''; // Limpa botões anteriores
+        this.alertModalButtons.innerHTML = '';
 
         buttons.forEach(btnInfo => {
             const button = document.createElement('button');
@@ -115,7 +113,7 @@ export const ui = {
             }
             
             button.onclick = () => {
-                this.alertModal.style.display = 'none'; // Sempre fecha o modal ao clicar
+                this.alertModal.style.display = 'none';
                 if (btnInfo.action === 'rematch') {
                     ws.sendMessage({ type: 'PLAYER_READY' });
                 } else if (btnInfo.action === 'leave') {
@@ -139,7 +137,7 @@ export const ui = {
     async renderRoomsList() {
         try {
             const data = await api.listRooms();
-            this.roomsList.innerHTML = ''; // Limpa a lista
+            this.roomsList.innerHTML = '';
             if (data.rooms.length === 0) {
                 this.roomsList.innerHTML = '<li>Nenhuma sala disponível. Crie uma!</li>';
                 return;
@@ -148,7 +146,6 @@ export const ui = {
                 const li = document.createElement('li');
                 li.textContent = `${room.name} (${room.playerCount}/${room.maxPlayers}) ${room.hasPassword ? '🔒' : ''}`;
                 
-                // Adiciona a classe e o texto com base no status da sala
                 if (room.status === 'playing') {
                     li.classList.add('room-playing');
                     li.textContent += ' (Em Jogo)';
@@ -161,8 +158,6 @@ export const ui = {
             });
         } catch (err) {
             this.showAlert(err.message);
-            // Numa falha de renderizar salas, não necessariamente deslogamos o usuário
-            // Apenas mostramos o erro.
         }
     },
     
@@ -190,7 +185,6 @@ export const ui = {
         const isReady = (roomState.readyPlayers || []).includes(myId);
 
         if (roomState.status === 'waiting') {
-             // Lógica para o botão de "Pronto" após uma partida (rematch)
             if (state.gameEnded) {
                 this.readyBtn.style.display = 'block';
                 if (isReady) {
@@ -200,10 +194,10 @@ export const ui = {
                     this.readyBtn.textContent = 'Jogar Novamente';
                     this.readyBtn.disabled = false;
                 }
-            } else { // Lógica para o lobby inicial antes da primeira partida
+            } else {
                 if (isHost) {
                     this.startGameBtn.style.display = 'block';
-                    this.startGameBtn.disabled = roomState.playerCount < 2; // Ajustar conforme regra do jogo
+                    this.startGameBtn.disabled = roomState.playerCount < 2;
                 } else {
                     const host = roomState.players.find(p => p.id === roomState.hostId);
                     this.gameStatusDiv.textContent = `Aguardando o anfitrião (${host?.username || '...'}) iniciar o jogo.`;
@@ -234,7 +228,6 @@ export const ui = {
         this.startGameBtn.style.display = 'none';
         this.readyBtn.style.display = 'none';
 
-        // --- Status e Controles ---
         clearInterval(state.turnTimerInterval);
         this.turnTimerDiv.style.display = 'none'; 
 
@@ -244,7 +237,7 @@ export const ui = {
         const playerHandContainer = document.getElementById('player-hand-container');
         
         if (isMyTurn) {
-            let timeLeft = 30; // Ajustar conforme gameConfig.ts
+            let timeLeft = 30;
             const updateMyTurnStatus = () => {
                 this.gameStatusDiv.innerHTML = `É a sua vez! <span class="turn-timer-display">(${timeLeft}s)</span>`;
                 const timerSpan = this.gameStatusDiv.querySelector('.turn-timer-display');
@@ -284,7 +277,6 @@ export const ui = {
             playerHandContainer?.classList.add('not-my-turn');
         }
 
-        // --- Info dos Jogadores ---
         this.playersInfoDiv.innerHTML = '';
         (gameState.players || []).forEach(p => {
             const playerDiv = document.createElement('div');
@@ -297,7 +289,6 @@ export const ui = {
             this.playersInfoDiv.appendChild(playerDiv);
         });
         
-        // --- Mão do Jogador ---
         this.playerHandDiv.innerHTML = '';
         (myHand || []).forEach(piece => {
             const dominoEl = createDominoElement(piece, true);
@@ -308,7 +299,6 @@ export const ui = {
             this.playerHandDiv.appendChild(dominoEl);
         });
         
-        // --- Tabuleiro ---
         clearBoard();
         const boardRect = this.gameBoard.getBoundingClientRect();
         const centerX = boardRect.width / 2;
@@ -329,7 +319,6 @@ export const ui = {
             this.gameBoard.appendChild(dominoEl);
         });
 
-        // --- Destaque de Pontas Jogáveis ---
         if(pieceToPlayWithOptions) {
              (gameState.activeEnds || []).forEach(end => {
                 if (pieceToPlayWithOptions.options.some(opt => opt.endId === end.id)) {
@@ -351,7 +340,7 @@ export const ui = {
     },
 
     renderMatchHistory(history) {
-        this.historyListContainer.innerHTML = ''; // Limpa conteúdo anterior
+        this.historyListContainer.innerHTML = '';
 
         if (!history || history.length === 0) {
             this.historyListContainer.innerHTML = '<p style="text-align: center; padding: 20px;">Nenhuma partida encontrada no seu histórico.</p>';
@@ -388,5 +377,41 @@ export const ui = {
         }
 
         this.historyModal.style.display = 'flex';
+    },
+
+    toggleChatWindow() {
+        this.chatWindow.classList.toggle('open');
+    },
+
+    addChatMessage(username, message, isMe) {
+        const item = document.createElement('li');
+        item.className = 'message-bubble ' + (isMe ? 'my-message' : 'other-message');
+        
+        const sender = document.createElement('span');
+        sender.className = 'sender';
+        sender.textContent = username;
+
+        const text = document.createElement('p');
+        text.textContent = message;
+
+        item.appendChild(sender);
+        item.appendChild(text);
+
+        this.chatMessagesList.appendChild(item);
+        this.chatMessagesList.scrollTop = this.chatMessagesList.scrollHeight;
+    },
+
+    updateChatNotification(show) {
+        this.chatNotificationDot.classList.toggle('hidden', !show);
+    },
+
+    renderChatHistory(history) {
+        this.chatMessagesList.innerHTML = '';
+        if (history) {
+            history.forEach(msg => {
+                const isMe = msg.username === state.username;
+                this.addChatMessage(msg.username, msg.message, isMe);
+            });
+        }
     },
 };
