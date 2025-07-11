@@ -1,3 +1,4 @@
+// projeto-domino/backend/src/api/controllers/lobby.controller.ts
 import { Request, Response } from 'express';
 import bcrypt from 'bcrypt';
 import { MAX_PLAYERS } from '../../config/gameConfig';
@@ -7,12 +8,12 @@ export const listRooms = async (req: Request, res: Response) => {
     try {
         const allRooms = memoryStore.getAllRooms();
         const publicRooms = allRooms
-            .filter(room => room.status === 'waiting')
-            .map(room => ({
+            .map(room => ({ // Removido o filtro .filter(room => room.status === 'waiting')
                 name: room.name,
                 playerCount: room.playerCount,
                 maxPlayers: MAX_PLAYERS,
                 hasPassword: room.hasPassword,
+                status: room.status, // Adicionado o status para o frontend poder diferenciar
             }));
         res.json({ rooms: publicRooms });
     } catch (error) {
@@ -39,8 +40,8 @@ export const joinRoom = async (req: Request, res: Response) => {
                 status: 'waiting',
                 players: new Set(),
                 hasPassword: !!password,
+                hostId: String(req.user!.userId),
                 readyPlayers: new Set(),
-                hostId: String(req.user!.userId)
             };
             if (password) {
                 newRoom.passwordHash = await bcrypt.hash(password, 10);
@@ -48,7 +49,12 @@ export const joinRoom = async (req: Request, res: Response) => {
             memoryStore.saveRoom(roomName, newRoom);
             room = newRoom;
         } else {
-            if (room.status !== 'playing' && room.playerCount >= MAX_PLAYERS) {
+            // Se a sala estiver jogando e o usuário não for um jogador existente (tentando reconectar)
+            // ele não deve poder entrar.
+            if (room.status === 'playing' && !room.players.has(String(req.user!.userId))) {
+                 return res.status(403).json({ message: 'Não é possível entrar em um jogo já em andamento.' });
+            }
+            if (room.status !== 'playing' && room.playerCount >= MAX_PLAYERS) { // Só impede se não estiver jogando e cheia
                 return res.status(403).json({ message: 'A sala está cheia.' });
             }
             if (room.passwordHash) {
