@@ -62,7 +62,7 @@ export const joinRoom = async (req: Request, res: Response) => {
             }
         }
         
-        const protocol = process.env.ENV === "production" ? "wss" : "ws"
+        const protocol = req.protocol === 'https' ? 'wss' : 'ws';
         const gameServerUrl = `${protocol}://${req.get('host')}/ws/game/${roomName}`;
         
         res.json({ success: true, gameServerUrl });
@@ -84,10 +84,11 @@ export const rejoinGame = async (req: Request, res: Response) => {
         }
         
         console.log(`[Rejoin API] Utilizador ID ${req.user!.userId} encontrado no jogo ativo ${roomId}.`);
-        const protocol = process.env.ENV === "production" ? "wss" : "ws";
+        const protocol = req.protocol === 'https' ? 'wss' : 'ws';
         const gameServerUrl = `${protocol}://${req.get('host')}/ws/game/${roomId}`;
         
-        res.json({ active_game: true, gameServerUrl, user: { userId, username } });
+        res.json({ success: true, gameServerUrl });
+
 
     } catch (error) {
         console.error(`Erro ao tentar reconectar utilizador ${userId}:`, error);

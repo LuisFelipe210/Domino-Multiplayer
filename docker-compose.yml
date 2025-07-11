@@ -30,7 +30,6 @@ services:
     restart: unless-stopped
     ports:
       - "5432:5432"
-    # NOVO: Adiciona uma verificação de saúde para o PostgreSQL
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
@@ -45,6 +44,9 @@ services:
     container_name: backend-server
     env_file:
       - .env
+    environment:
+      - NODE_ENV=${NODE_ENV:-development}
+      - PORT=4000
     depends_on:
       postgres:
         condition: service_healthy
