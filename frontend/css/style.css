@@ -151,16 +151,12 @@ input[type="text"]:focus, input[type="password"]:focus {
 /* NOVOS ESTILOS PARA AS SALAS */
 #rooms-list li.room-waiting {
     background-color: #e6ffe6; /* Verde claro */
-    border-color: #28a745;     /* Borda verde */
-    color: #218838;
-    font-weight: bold;
+    color: #155724;
 }
 
 #rooms-list li.room-playing {
     background-color: #ffe6e6; /* Vermelho claro */
-    border-color: #dc3545;     /* Borda vermelha */
-    color: #c82333;
-    font-weight: bold;
+    color: #721c24;
     opacity: 0.8; /* Levemente opaco para indicar que está em jogo */
 }
 /* FIM DOS NOVOS ESTILOS PARA AS SALAS */

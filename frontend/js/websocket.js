@@ -2,26 +2,23 @@ import { state } from './state.js';
 import { ui } from './ui.js';
 
 function handleMessage(message) {
-    console.log('WS Message received:', message.type, message); // NEW LOG
     switch (message.type) {
         case 'ROOM_STATE':
-            console.log('Handling ROOM_STATE, rendering lobby state in game view.'); // NEW LOG
             state.roomState = message;
             if (message.myId) state.myId = message.myId;
             ui.renderLobbyState();
             ui.showView('game');
-            ui.hideLoading(); // ESCONDER O OVERLAY APÓS RECEBER O ESTADO DA SALA
+            ui.hideLoading(); // Esconde o overlay após receber o estado da sala
             break;
         case 'JOGO_INICIADO':
-        case 'ESTADO_ATUALIZADO': // Covers both
-            console.log('Handling JOGO_INICIADO/ESTADO_ATUALIZADO, rendering game state.'); // NEW LOG
+        case 'ESTADO_ATUALIZADO':
             state.gameEnded = false; 
             state.gameState = message;
             if (message.myId) state.myId = message.myId;
             if (message.yourHand) state.myHand = message.yourHand;
             ui.renderGameState();
             ui.showView('game');
-            ui.hideLoading(); // ESCONDER O OVERLAY APÓS ATUALIZAÇÃO DO ESTADO (incluindo reconexão)
+            ui.hideLoading(); // Esconde o overlay após atualização (incluindo reconexão)
             break;
         case 'UPDATE_HAND':
             state.myHand = message.yourNewHand;
@@ -49,14 +46,13 @@ function handleMessage(message) {
             break;
         case 'ROOM_REMOVED':
              if (ui.views.lobby.classList.contains('active')) {
-                ui.renderRoomsList(); // Mais simples que remover um por um
+                ui.renderRoomsList();
             }
             break;
         case 'ERRO':
-            console.log('WS Error received:', message.message); // NEW LOG
             ui.showAlert(`Erro: ${message.message}`);
             state.pieceToPlayWithOptions = null; // Limpa o estado de escolha
-            ui.hideLoading(); // Ensure loading is hidden on error
+            ui.hideLoading(); // Garante que o loading seja escondido em caso de erro
             break;
     }
 }
@@ -64,21 +60,15 @@ function handleMessage(message) {
 export const ws = {
     connect(url) {
         if (state.ws) {
-            // When connecting a new WebSocket (e.g., on page refresh),
-            // we intentionally close the old one to prevent its 'onclose'
-            // handler from attempting reconnects or displaying errors.
             state.intentionalDisconnect = true;
             state.ws.close();
         }
-        // For the *new* WebSocket, we want unintentional disconnects (e.g. network loss)
-        // to be treated as such, so we reset the flag.
         state.intentionalDisconnect = false;
         
         state.ws = new WebSocket(url);
 
         state.ws.onopen = () => {
             console.log('Conectado ao servidor de jogo!');
-            state.reconnectAttempts = 0; // Reset attempts on successful connection
         };
 
         state.ws.onmessage = (event) => {
@@ -87,26 +77,26 @@ export const ws = {
 
         state.ws.onclose = () => {
             console.log('Desconectado do servidor de jogo.');
-            clearInterval(state.turnTimerInterval); // Clear any active turn timer
+            clearInterval(state.turnTimerInterval);
             
             if (state.intentionalDisconnect) {
-                return;
+                return; // Não faz nada se a desconexão foi intencional
             }
 
-            // For unintentional disconnects (e.g., refresh, network drop),
-            // do not force a redirect to login or attempt multiple reconnects here.
-            // The main.js's `checkSessionAndStart` on `window.load` will
-            // handle rejoining if there's an active game.
-            ui.showAlert('Conexão com o servidor perdida. Por favor, atualize a página ou verifique sua conexão.');
-            ui.hideLoading(); // Esconder o overlay se a conexão cair após o carregamento
+            // Para desconexões acidentais, avisa o usuário para atualizar a página.
+            // A lógica de reconexão será tratada pelo `checkSessionAndStart` no recarregamento.
+            ui.showAlert('Conexão com o servidor perdida. Por favor, atualize a página.');
+            ui.hideLoading();
             state.ws = null;
-            state.reconnectAttempts = 0;
         };
 
         state.ws.onerror = (err) => {
             console.error('Erro de WebSocket:', err);
-            ui.hideLoading(); // Esconder o overlay em caso de erro
-            state.ws.close(); 
+            ui.hideLoading();
+            // Numa falha de conexão, é melhor apenas fechar e deixar o `onclose` lidar com a mensagem
+            if (state.ws) {
+                state.ws.close(); 
+            }
         };
     },
 
@@ -115,23 +105,22 @@ export const ws = {
             state.ws.send(JSON.stringify(payload));
         } else {
             console.error("WebSocket não está conectado.");
-            // Optionally, prompt user to refresh or try again if not connected.
-            ui.showAlert('Não foi possível enviar a mensagem. Por favor, reconecte-se.');
+            ui.showAlert('Não foi possível enviar a mensagem. A sua conexão pode ter caído.');
         }
     },
 
     leaveRoom() {
-        state.intentionalDisconnect = true; // Mark as intentional
+        state.intentionalDisconnect = true; // Marca como intencional
         if (state.ws) {
             state.ws.close();
             state.ws = null;
         }
-        // Reset game-related states when leaving room intentionally
+        // Reseta os estados relacionados ao jogo
         Object.assign(state, {
             gameState: {}, roomState: {}, myHand: [], pieceToPlayWithOptions: null, gameEnded: false,
         });
-        ui.renderLobbyState(); // Clear UI and show lobby
+        ui.renderLobbyState(); // Limpa a UI de jogo
         ui.showView('lobby');
-        ui.renderRoomsList(); // Refresh the list of rooms
+        ui.renderRoomsList(); // Atualiza a lista de salas do lobby
     }
 };

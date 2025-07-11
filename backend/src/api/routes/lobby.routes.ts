@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { body } from 'express-validator';
-import { listRooms, joinRoom, rejoinGame } from '../controllers/lobby.controller';
+import { listRooms, joinRoom, checkActiveGame } from '../controllers/lobby.controller';
 import { authMiddleware } from '../middleware/auth.middleware';
 import { handleValidationErrors } from '../middleware/validation.middleware';
 
@@ -17,13 +17,14 @@ router.post(
     '/rooms', 
     body('roomName')
         .notEmpty().withMessage('O nome da sala é obrigatório.')
+        .isLength({min: 3, max: 20}).withMessage('O nome da sala deve ter entre 3 e 20 caracteres.')
         .trim()
         .escape(),
     handleValidationErrors, // Usando o middleware centralizado
     joinRoom
 );
 
-// Nova rota para tentar reconectar a um jogo existente
-router.get('/rejoin', rejoinGame);
+// Rota para verificar se o utilizador tem uma sessão ou um jogo ativo para reconectar
+router.get('/rejoin', checkActiveGame);
 
 export default router;

@@ -2,29 +2,48 @@ import { ui } from './ui.js';
 import { ws } from './websocket.js';
 
 async function fetchAPI(url, options = {}) {
-    const res = await fetch(url, options);
-    if (!res.ok) {
-        const errorData = await res.json().catch(() => ({ message: res.statusText }));
-        const errorMessage = errorData.errors ? errorData.errors[0].msg : (errorData.message || 'Ocorreu um erro.');
-        throw new Error(errorMessage);
+    const defaultOptions = {
+        headers: {
+            'Content-Type': 'application/json',
+        },
+    };
+
+    const finalOptions = { ...defaultOptions, ...options };
+    if (finalOptions.body) {
+        finalOptions.body = JSON.stringify(finalOptions.body);
     }
-    return res.json();
+
+    try {
+        const res = await fetch(url, finalOptions);
+        if (!res.ok) {
+            const errorData = await res.json().catch(() => ({ message: res.statusText }));
+            const errorMessage = (errorData.errors ? errorData.errors[0].msg : errorData.message) || 'Ocorreu um erro desconhecido.';
+            throw new Error(errorMessage);
+        }
+        // Se a resposta for 204 No Content, retorna um objeto vazio
+        if (res.status === 204) {
+            return {};
+        }
+        return res.json();
+    } catch (error) {
+        // Re-lança o erro para que a função que chamou possa tratá-lo
+        throw error;
+    }
 }
+
 
 export const api = {
     async register(username, password) {
         return fetchAPI('/api/auth/register', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
+            body: { username, password },
         });
     },
 
     async login(username, password) {
         return fetchAPI('/api/auth/login', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ username, password }),
+            body: { username, password },
         });
     },
 
@@ -43,12 +62,12 @@ export const api = {
     async joinRoom(roomName, password) {
         return fetchAPI('/api/lobby/rooms', {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ roomName, password }),
+            body: { roomName, password },
         });
     },
     
     async checkForActiveGame() {
+        // Este é o endpoint chave para a reconexão automática
         return fetchAPI('/api/lobby/rejoin');
     },
 

@@ -6,34 +6,34 @@ import { ws } from './websocket.js';
 
 // --- Função auxiliar para verificar sessão e iniciar a UI ---
 async function checkSessionAndStart() {
-    console.log('checkSessionAndStart called.'); // NEW LOG
     try {
+        // Esta chamada de API agora determina se estamos logados e se temos um jogo ativo
         const data = await api.checkForActiveGame();
-        console.log('checkForActiveGame response:', data); // NEW LOG
+
+        // Sempre atualiza o estado do usuário se a API retornar os dados
         if (data.user && data.user.username) {
             state.myId = data.user.userId;
             state.username = data.user.username;
             ui.showLoggedInHeader(state.username);
         }
 
+        // Se um jogo ativo for encontrado, conecta-se diretamente a ele
         if (data.active_game) {
-            console.log('Active game detected, showing game view and connecting WS.'); // NEW LOG
-            ui.showLoading(); 
-            ui.showView('game');
+            ui.showLoading(); // Mostra "Reconectando..."
+            ui.showView('game'); // Mostra a tela do jogo por trás do overlay
             ws.connect(data.gameServerUrl);
         } else {
-            console.log('No active game, showing lobby view.'); // NEW LOG
+            // Se não houver jogo ativo, mas estivermos logados, mostra o lobby
             ui.showView('lobby');
             ui.renderRoomsList();
         }
     } catch (error) {
-        console.error('Error in checkSessionAndStart:', error); // NEW LOG
+        // Um erro aqui geralmente significa que o token é inválido ou expirou
         ui.hideLoading(); 
-        // Erro aqui geralmente significa token inválido ou expirado
         state.myId = null;
         state.username = null;
         ui.showLoggedOutHeader();
-        ui.showView('auth');
+        ui.showView('auth'); // Redireciona para a tela de login
     }
 }
 
@@ -45,7 +45,7 @@ ui.loginForm.addEventListener('submit', async (e) => {
     const password = document.getElementById('login-password').value;
     try {
         await api.login(username, password);
-        await checkSessionAndStart();
+        await checkSessionAndStart(); // Re-executa a verificação após o login
     } catch (err) {
         ui.showAlert(`Erro no login: ${err.message}`);
     }
@@ -67,7 +67,7 @@ ui.registerForm.addEventListener('submit', async (e) => {
 });
 
 ui.logoutBtn.addEventListener('click', async () => {
-    state.intentionalDisconnect = true;
+    state.intentionalDisconnect = true; // Sinaliza que o logout é intencional
     if (state.ws) {
         state.ws.close();
         state.ws = null;
@@ -101,6 +101,7 @@ ui.joinRoomForm.addEventListener('submit', async (e) => {
     const password = document.getElementById('room-password').value;
     try {
         const data = await api.joinRoom(roomName, password);
+        ui.showLoading();
         ws.connect(data.gameServerUrl);
     } catch (err) {
         ui.showAlert(`Erro ao entrar na sala: ${err.message}`);
@@ -128,12 +129,15 @@ ui.passTurnBtn.addEventListener('click', () => {
 });
 
 ui.leaveGameBtn.addEventListener('click', () => {
-    const confirmationMessage = state.roomState.status === 'playing'
+    const isPlaying = state.gameState && state.gameState.board && state.gameState.board.length > 0;
+    const confirmationMessage = isPlaying
         ? 'Tem a certeza que quer abandonar a partida? Isto contará como uma derrota.'
         : 'Tem a certeza que quer sair da sala?';
-    if (confirm(confirmationMessage)) {
-        ws.leaveRoom();
-    }
+    
+    ui.showAlert(confirmationMessage, [
+        { text: 'Sim, sair', action: 'leave', class: 'btn-danger' },
+        { text: 'Cancelar', action: 'close' }
+    ]);
 });
 
 // --- Event Listeners do Histórico ---

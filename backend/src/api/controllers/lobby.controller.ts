@@ -8,7 +8,7 @@ export const listRooms = async (req: Request, res: Response) => {
     try {
         const allRooms = memoryStore.getAllRooms();
         const publicRooms = allRooms
-            .map(room => ({ // Removido o filtro .filter(room => room.status === 'waiting')
+            .map(room => ({
                 name: room.name,
                 playerCount: room.playerCount,
                 maxPlayers: MAX_PLAYERS,
@@ -69,7 +69,7 @@ export const joinRoom = async (req: Request, res: Response) => {
         }
         
         const protocol = req.protocol === 'https' ? 'wss' : 'ws';
-        const gameServerUrl = `${protocol}://${req.get('host')}/ws/game/${roomName}`;
+        const gameServerUrl = `${protocol}://${req.get('host')}/ws/game/${encodeURIComponent(roomName)}`;
         
         res.json({ success: true, gameServerUrl });
 
@@ -79,22 +79,28 @@ export const joinRoom = async (req: Request, res: Response) => {
     }
 };
 
-export const rejoinGame = async (req: Request, res: Response) => {
-    const userId = req.user!.userId;
+export const checkActiveGame = async (req: Request, res: Response) => {
+    const userId = String(req.user!.userId);
     const username = req.user!.username;
     
     try {
-        const roomId = memoryStore.getRoomIdFromUser(String(userId));
-        if (!roomId || !memoryStore.getGameState(roomId)) {
-             return res.json({ active_game: false, user: { userId, username } });
+        const roomId = memoryStore.getRoomIdFromUser(userId);
+        
+        // Verifica se o usuário está mapeado para uma sala E se essa sala tem um estado de jogo ativo
+        if (roomId && memoryStore.getGameState(roomId)) {
+            console.log(`[Rejoin API] Utilizador ID ${userId} encontrado no jogo ativo ${roomId}.`);
+            const protocol = req.protocol === 'https' ? 'wss' : 'ws';
+            const gameServerUrl = `${protocol}://${req.get('host')}/ws/game/${encodeURIComponent(roomId)}`;
+            
+            return res.json({ 
+                active_game: true, 
+                gameServerUrl, 
+                user: { userId, username } 
+            });
         }
         
-        console.log(`[Rejoin API] Utilizador ID ${req.user!.userId} encontrado no jogo ativo ${roomId}.`);
-        const protocol = req.protocol === 'https' ? 'wss' : 'ws';
-        const gameServerUrl = `${protocol}://${req.get('host')}/ws/game/${roomId}`;
-        
-        res.json({ success: true, gameServerUrl });
-
+        // Se não houver jogo ativo, apenas retorna a informação do usuário logado
+        return res.json({ active_game: false, user: { userId, username } });
 
     } catch (error) {
         console.error(`Erro ao tentar reconectar utilizador ${userId}:`, error);
